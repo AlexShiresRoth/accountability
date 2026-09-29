@@ -1,26 +1,151 @@
 @import "tailwindcss";
 
+/*
+  Design tokens.
+  Muted "paper" theme by default; follows the system dark-mode preference.
+  All text/background pairs target WCAG AA (most exceed AAA for body text).
+  No red/green semantics: statistics and legal statuses must not read as alarms or scores.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #f5f3ee;
+  --surface: #fbfaf7;
+  --ink: #1d1c1a;
+  --ink-muted: #57534c;
+  --rule: #dcd7cd;
+  --rule-strong: #b9b2a4;
+  --accent: #2e4a6b;
+  --accent-soft: #e4e9ef;
+  --caution: #f1e9d6;
+  --caution-rule: #b8964e;
+  --caution-ink: #4a3b17;
+  --demo: #efe3f0;
+  --demo-rule: #8c5a8f;
+  --demo-ink: #4a2a4c;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #15171a;
+    --surface: #1c1f23;
+    --ink: #e8e5de;
+    --ink-muted: #a8a399;
+    --rule: #2e3238;
+    --rule-strong: #4a4f57;
+    --accent: #9db8d8;
+    --accent-soft: #232c37;
+    --caution: #2a2519;
+    --caution-rule: #8a7340;
+    --caution-ink: #e6d7b0;
+    --demo: #2a1f2b;
+    --demo-rule: #8c5a8f;
+    --demo-ink: #e7cfe8;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-caution: var(--caution);
+  --color-caution-rule: var(--caution-rule);
+  --color-caution-ink: var(--caution-ink);
+  --color-demo: var(--demo);
+  --color-demo-rule: var(--demo-rule);
+  --color-demo-ink: var(--demo-ink);
+
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+  }
+
+  @media (min-width: 768px) {
+    body {
+      font-size: 1.125rem;
+    }
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  p,
+  li {
+    text-wrap: pretty;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
+  a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Long-form reading: methodology, lessons, case narratives. */
+  .prose-body {
+    max-width: 68ch;
+  }
+  .prose-body > * + * {
+    margin-top: 1em;
+  }
+  .prose-body > :first-child {
+    margin-top: 0;
+  }
+  .prose-body h2 {
+    font-size: 1.5rem;
+    margin-top: 2.25em;
+  }
+  .prose-body h3 {
+    font-size: 1.2rem;
+    margin-top: 1.75em;
+  }
+  .prose-body ul {
+    list-style: disc;
+    padding-left: 1.25em;
+  }
+  .prose-body ol {
+    list-style: decimal;
+    padding-left: 1.25em;
+  }
+  .prose-body li + li {
+    margin-top: 0.4em;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
