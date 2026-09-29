@@ -1,4 +1,4 @@
-# Local development database only. Production uses Supabase-managed Postgres.
+# Optional offline development database. The primary dev and production DB is Supabase.
 services:
   db:
     image: postgres:17-alpine
