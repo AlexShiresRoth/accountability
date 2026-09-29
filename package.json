@@ -10,12 +10,13 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:up": "docker compose up -d --wait db",
-    "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx --env-file=.env.local scripts/seed.ts"
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "db:migrate:prod": "DB_TARGET=production drizzle-kit migrate",
+    "db:local:up": "docker compose up -d --wait db",
+    "db:local:down": "docker compose down"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",
