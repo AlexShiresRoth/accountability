@@ -1,11 +1,12 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { resolveDbTarget } from "@/db/target";
 import type { Database } from "@/db/types";
 import { PUBLIC_STATUSES, type VerificationStatus } from "@/lib/enums";
 
 export type PublicContext = {
   db: Database;
-  /** Exclude development fixtures (is_demo). Always true in production. */
+  /** Exclude development fixtures (is_demo). Always true against the production database. */
   hideDemo: boolean;
 };
 
@@ -24,6 +25,7 @@ export function inIds(column: AnyPgColumn, ids: string[]): SQL {
 
 export const isUnderReview = (status: VerificationStatus) => status === "needs_update";
 
+/** Demo data is always hidden when reading the production database; optionally hidden elsewhere. */
 export function shouldHideDemo(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV === "production" || env.HIDE_DEMO_DATA === "true";
+  return resolveDbTarget(env) === "production" || env.HIDE_DEMO_DATA === "true";
 }

@@ -1,8 +1,10 @@
 // Chooses which database a process talks to.
 //
-//   production target: NODE_ENV=production (Vercel) or DB_TARGET=production (explicit, e.g. `pnpm db:migrate:prod`)
+//   production target: Vercel production deployments (VERCEL_ENV=production),
+//                      or DB_TARGET=production (explicit, e.g. `pnpm db:migrate:prod`)
 //                      → DATABASE_URL / MIGRATION_DATABASE_URL
-//   development target: everything else → DEV_DATABASE_URL / DEV_MIGRATION_DATABASE_URL
+//   development target: everything else, including local `next build` / `next start`
+//                      → DEV_DATABASE_URL / DEV_MIGRATION_DATABASE_URL
 //
 // There is no silent fallback from development to production credentials.
 
@@ -15,7 +17,7 @@ export function resolveDbTarget(env: NodeJS.ProcessEnv = process.env): DbTarget 
     }
     return env.DB_TARGET;
   }
-  return env.NODE_ENV === "production" ? "production" : "development";
+  return env.VERCEL_ENV === "production" ? "production" : "development";
 }
 
 export function resolveDatabaseUrl(

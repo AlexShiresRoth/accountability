@@ -8,4 +8,10 @@ export const site = {
     { href: "/methodology", label: "Methodology" },
     { href: "/sources", label: "Sources" },
   ],
+  /** Institutions in the initial release. Shown as "in preparation" until their profile is verified. */
+  initialInstitutions: [
+    { slug: "cornell-university", name: "Cornell University" },
+    { slug: "harvard-university", name: "Harvard University" },
+    { slug: "columbia-university", name: "Columbia University" },
+  ],
 } as const;
