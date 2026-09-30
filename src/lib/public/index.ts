@@ -12,5 +12,5 @@ export const getCollegeProfile = cache((slug: string) => q.getCollegeProfile(ctx
 export const getCase = cache((slug: string) => q.getCase(ctx(), slug));
 export const listPublicSources = cache(() => q.listPublicSources(ctx()));
 
-export { citationKey } from "./queries";
+export { citationKey } from "@/lib/citations";
 export type * from "./queries";

@@ -7,16 +7,17 @@ import { confidentialityLevels, responseTopics } from "@/lib/enums";
 import {
   actionTypeLabels,
   confidentialityLabels,
-  coverageTopicLabels,
   geographyLabels,
   offenseLabels,
   policyTypeLabels,
   resourceCategoryLabels,
   responseTopicLabels,
 } from "@/lib/labels";
-import { citationKey, type CollegeProfile, type PublicCitation, type PublicCorrection } from "@/lib/public";
+import { citationKey } from "@/lib/citations";
+import type { CollegeProfile, PublicCitation } from "@/lib/public";
 import { groupFootnotes } from "@/lib/footnotes";
 import { reportingYears } from "@/lib/statistics";
+import { CoverageList } from "@/components/coverage-list";
 import { StatisticsExplorer, type FootnoteRef } from "./statistics-explorer";
 
 type P = { profile: CollegeProfile };
@@ -63,32 +64,6 @@ export function ProfileFacts({ profile: p }: P) {
 }
 
 // ---------------------------------------------------------------------------
-
-/** Corrections are shown at the top of the page, as prominently as the original information. */
-export function CorrectionsBanner({
-  corrections,
-  citations,
-}: {
-  corrections: PublicCorrection[];
-  citations: CollegeProfile["citations"];
-}) {
-  if (!corrections.length) return null;
-  return (
-    <section aria-labelledby="corrections" className="border-l-4 border-ink bg-surface px-5 py-4">
-      <h2 id="corrections" className="font-sans text-base font-semibold">
-        {corrections.length === 1 ? "Correction" : "Corrections"}
-      </h2>
-      <ul className="mt-2 space-y-2">
-        {corrections.map((c) => (
-          <li key={c.id}>
-            <span className="font-medium">{formatDate(c.correctionDate)}:</span> {c.description}
-            <Cite id={`correction-${c.id}`} citations={citations[citationKey("correction", c.id)]} />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
 
 // ---------------------------------------------------------------------------
 
@@ -399,34 +374,7 @@ export function CoverageSection({ profile: p }: P) {
       {p.coverage.length === 0 ? (
         <p className="text-ink-muted">No coverage has been added yet.</p>
       ) : (
-        <ul className="divide-y divide-rule border-y border-rule">
-          {p.coverage.map((c) => (
-            <li key={c.id} className="grid gap-1 py-4 sm:grid-cols-[10rem_1fr] sm:gap-6">
-              <p className="text-sm text-ink-muted">
-                {c.source.publicationDate ? formatDate(c.source.publicationDate) : "Undated"}
-                <span className="block">{coverageTopicLabels[c.topic]}</span>
-              </p>
-              <div>
-                <p>
-                  {c.summary} {c.underReview && <UnderReviewTag />}
-                </p>
-                <p className="mt-1 flex flex-wrap gap-x-4 text-[0.95rem]">
-                  {c.source.url && (
-                    <a href={c.source.url} target="_blank" rel="noopener noreferrer">
-                      Read at {c.source.publisher}
-                    </a>
-                  )}
-                  {c.source.archivedUrl && (
-                    <a href={c.source.archivedUrl} target="_blank" rel="noopener noreferrer">
-                      Archived copy
-                    </a>
-                  )}
-                  {c.caseSlug && <Link href={`/case/${c.caseSlug}`}>Related case timeline</Link>}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <CoverageList coverage={p.coverage} />
       )}
     </section>
   );
