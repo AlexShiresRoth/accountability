@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { CollegeList } from "@/components/college-list";
 import { Container } from "@/components/container";
 import { DataQualityNotes } from "@/components/data-quality-note";
+import { searchColleges } from "@/lib/public";
+import { site } from "@/lib/site";
+
+export const revalidate = 3600;
 
 const measures = [
   {
@@ -21,10 +26,11 @@ const measures = [
   },
 ];
 
-// Replaced by verified college records once the database layer lands.
-const initialInstitutions = ["Cornell University", "Harvard University", "Columbia University"];
+export default async function HomePage() {
+  const published = await searchColleges();
+  const publishedSlugs = new Set(published.map((c) => c.slug));
+  const inPreparation = site.initialInstitutions.filter((i) => !publishedSlugs.has(i.slug));
 
-export default function HomePage() {
   return (
     <>
       <section className="border-b border-rule">
@@ -34,7 +40,7 @@ export default function HomePage() {
             Understand how universities report, prevent, and respond to violence against women.
           </p>
 
-          <form action="/" method="get" role="search" className="mt-10 max-w-xl">
+          <form action="/search" method="get" role="search" className="mt-10 max-w-xl">
             <label htmlFor="q" className="mb-2 block text-sm font-medium text-ink-muted">
               Find a university
             </label>
@@ -82,14 +88,9 @@ export default function HomePage() {
           <p className="mt-3 max-w-[60ch] text-ink-muted">
             Coverage begins with three institutions and will expand as profiles are researched and verified.
           </p>
-          <ul className="mt-8 divide-y divide-rule border-y border-rule">
-            {initialInstitutions.map((name) => (
-              <li key={name} className="flex flex-wrap items-baseline justify-between gap-2 py-4">
-                <span className="font-serif text-lg">{name}</span>
-                <span className="text-sm text-ink-muted">Profile in preparation</span>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-8">
+            <CollegeList colleges={published} inPreparation={inPreparation.map((i) => i.name)} />
+          </div>
         </Container>
       </section>
 

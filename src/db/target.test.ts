@@ -15,13 +15,21 @@ describe("database target", () => {
     expect(resolveDatabaseUrl({ migration: true }, env({ ...all })).url).toBe("dev-migrate");
   });
 
-  it("uses production when NODE_ENV=production or DB_TARGET=production", () => {
-    expect(resolveDatabaseUrl({}, env({ ...all, NODE_ENV: "production" })).url).toBe("prod-app");
+  it("uses development for local production builds", () => {
+    expect(resolveDatabaseUrl({}, env({ ...all, NODE_ENV: "production" })).url).toBe("dev-app");
+  });
+
+  it("uses production on Vercel production deployments or with DB_TARGET=production", () => {
+    expect(resolveDatabaseUrl({}, env({ ...all, NODE_ENV: "production", VERCEL_ENV: "production" })).url).toBe("prod-app");
     expect(resolveDatabaseUrl({ migration: true }, env({ ...all, DB_TARGET: "production" })).url).toBe("prod-migrate");
   });
 
-  it("lets DB_TARGET=development override a production build", () => {
-    expect(resolveDbTarget(env({ NODE_ENV: "production", DB_TARGET: "development" }))).toBe("development");
+  it("treats Vercel preview deployments as development", () => {
+    expect(resolveDbTarget(env({ NODE_ENV: "production", VERCEL_ENV: "preview" }))).toBe("development");
+  });
+
+  it("lets DB_TARGET override the environment", () => {
+    expect(resolveDbTarget(env({ VERCEL_ENV: "production", DB_TARGET: "development" }))).toBe("development");
   });
 
   it("never falls back from development to production credentials", () => {

@@ -4,7 +4,7 @@ import type { VerificationStatus } from "@/lib/enums";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
 import { citationKey, getCase, getCollegeProfile, listPublicSources, searchColleges } from "./queries";
-import type { PublicContext } from "./visibility";
+import { shouldHideDemo, type PublicContext } from "./visibility";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -113,6 +113,14 @@ describe("verification gating", () => {
       const college = await f.college({ isDemo: true });
       expect(await getCollegeProfile(ctx, college.slug)).toBeNull();
       expect(await getCollegeProfile({ db, hideDemo: false }, college.slug)).not.toBeNull();
+    });
+
+    it("is always hidden against the production database, whatever HIDE_DEMO_DATA says", () => {
+      const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
+      expect(shouldHideDemo(env({ VERCEL_ENV: "production", HIDE_DEMO_DATA: "false" }))).toBe(true);
+      expect(shouldHideDemo(env({ DB_TARGET: "production" }))).toBe(true);
+      expect(shouldHideDemo(env({ NODE_ENV: "production" }))).toBe(false);
+      expect(shouldHideDemo(env({ HIDE_DEMO_DATA: "true" }))).toBe(true);
     });
 
     it("hides demo children of a real college", async () => {
