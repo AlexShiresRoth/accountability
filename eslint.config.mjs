@@ -6,6 +6,11 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
     // Public pages may only read data through the verified-only public layer (@/lib/public).
     files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
     ignores: ["src/app/admin/**", "src/app/api/**", "src/components/admin/**"],

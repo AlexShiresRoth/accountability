@@ -1,0 +1,226 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ActionForm } from "@/components/admin/action-form";
+import { PublishedEditWarning, SelectField, TextArea, TextField } from "@/components/admin/fields";
+import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
+import { StatusBadge } from "@/components/admin/status";
+import { db } from "@/db";
+import { getReport, sourceOptions } from "@/lib/admin/queries";
+import { cellKey } from "@/lib/admin/records";
+import { requireResearcherPage } from "@/lib/admin/session";
+import { cleryGeographies, offenses, type VerificationStatus } from "@/lib/enums";
+import { geographyLabels, offenseLabels } from "@/lib/labels";
+import {
+  createFootnoteAction,
+  saveGridAction,
+  setFootnoteLinksAction,
+  updateFootnoteAction,
+  updateReportAction,
+} from "../../actions";
+
+export const metadata = { title: "Clery report" };
+
+const cellStatusStyle: Record<VerificationStatus, string> = {
+  draft: "border-rule-strong",
+  pending_review: "border-caution-rule",
+  verified: "border-ink",
+  needs_update: "border-caution-rule",
+  rejected: "border-rule-strong line-through opacity-60",
+};
+
+export default async function ReportAdmin({ params }: PageProps<"/admin/reports/[id]">) {
+  await requireResearcherPage();
+  const data = await getReport(db, (await params).id);
+  if (!data) notFound();
+  const { report, college, source, statistics, footnotes, links } = data;
+  const sources = await sourceOptions(db);
+
+  const byKey = new Map(statistics.map((st) => [cellKey(st.calendarYear, st.offense, st.geography), st]));
+  const years = [...new Set([report.reportYear - 3, report.reportYear - 2, report.reportYear - 1, ...statistics.map((st) => st.calendarYear)])].sort();
+  const label = (st: (typeof statistics)[number]) => `${st.calendarYear} ${offenseLabels[st.offense]}, ${geographyLabels[st.geography].toLowerCase()}`;
+  const sortedStats = [...statistics].sort(
+    (a, b) =>
+      cleryGeographies.indexOf(a.geography) - cleryGeographies.indexOf(b.geography) ||
+      offenses.indexOf(a.offense) - offenses.indexOf(b.offense) ||
+      a.calendarYear - b.calendarYear,
+  );
+
+  return (
+    <div className="space-y-10">
+      <div>
+        <p className="text-sm text-ink-muted">
+          <Link href="/admin/colleges">Colleges</Link> / <Link href={`/admin/colleges/${college.id}`}>{college.name}</Link> /
+        </p>
+        <h1 className="text-2xl">{report.title}</h1>
+        <p className="mt-1 text-sm text-ink-muted">
+          Source: <Link href={`/admin/sources/${source.id}`}>{source.title}</Link> <StatusBadge status={source.status} />
+        </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
+        <div className="space-y-4">
+          <PublishedEditWarning status={report.status} />
+          <ActionForm action={updateReportAction.bind(null, report.id, college.id)} submitLabel="Save report details">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField name="reportYear" label="Report year" type="number" required defaultValue={report.reportYear} />
+              <TextField name="title" label="Title" required defaultValue={report.title} />
+            </div>
+            <SelectField
+              name="sourceId"
+              label="Source document"
+              required
+              defaultValue={source.id}
+              options={sources.map((s) => ({ value: s.id, label: `${s.title} (${s.publisher})` }))}
+            />
+          </ActionForm>
+          <CitationsPanel recordKey="clery_report" recordId={report.id} />
+        </div>
+        <div className="space-y-4">
+          <StatusPanel
+            recordKey="clery_report"
+            record={report}
+            extra={
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="withContents" defaultChecked className="mt-1" />
+                <span>When verifying, also verify this report&rsquo;s unverified figures and notes (rejected ones are left alone).</span>
+              </label>
+            }
+          />
+          <DeletePanel recordKey="clery_report" id={report.id} status={report.status} redirectTo={`/admin/colleges/${college.id}`} />
+        </div>
+      </div>
+
+      <section aria-labelledby="grid" className="space-y-4">
+        <h2 id="grid" className="text-xl">
+          Statistics
+        </h2>
+        <p className="max-w-[75ch] text-ink-muted">
+          Transcribe exactly as printed. Leave blank if the report has no such cell; enter <strong>-</strong> if the report
+          shows the figure as unavailable; enter <strong>0</strong> only when the report prints zero. Residential figures are
+          a subset of on-campus figures: enter them as printed, never subtracted or added. Cell borders show status: dark =
+          verified, amber = pending review.
+        </p>
+        <ActionForm action={saveGridAction.bind(null, report.id)} submitLabel="Save figures">
+          <div className="grid gap-6 xl:grid-cols-2">
+            {cleryGeographies.map((geo) => (
+              <fieldset key={geo} className="border border-rule p-3">
+                <legend className="px-1 font-medium">{geographyLabels[geo]}</legend>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className="py-1 pr-2 text-left font-medium">Offense</th>
+                      {years.map((y) => (
+                        <th key={y} className="tabular px-1 py-1 text-right font-medium">
+                          {y}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {offenses.map((o) => (
+                      <tr key={o}>
+                        <th scope="row" className="py-1 pr-2 text-left font-normal">
+                          {offenseLabels[o]}
+                        </th>
+                        {years.map((y) => {
+                          const st = byKey.get(cellKey(y, o, geo));
+                          return (
+                            <td key={y} className="px-1 py-1">
+                              <input
+                                name={cellKey(y, o, geo)}
+                                aria-label={`${y} ${offenseLabels[o]}, ${geographyLabels[geo]}`}
+                                defaultValue={st ? (st.count === null ? "-" : String(st.count)) : ""}
+                                inputMode="numeric"
+                                autoComplete="off"
+                                className={`tabular w-full min-w-12 border-2 bg-surface px-1.5 py-1 text-right ${st ? cellStatusStyle[st.status] : "border-rule"}`}
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </fieldset>
+            ))}
+          </div>
+        </ActionForm>
+      </section>
+
+      <section aria-labelledby="footnotes" className="space-y-4">
+        <h2 id="footnotes" className="text-xl">
+          Footnotes
+        </h2>
+        <p className="max-w-[75ch] text-ink-muted">
+          Copy footnotes verbatim. Then tick the figures each one applies to, so it appears next to them on the profile.
+        </p>
+
+        {footnotes.map((fn) => {
+          const linked = new Set(links.filter((l) => l.footnoteId === fn.id).map((l) => l.statisticId));
+          return (
+            <article key={fn.id} className="space-y-4 border border-rule p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="font-sans text-base font-semibold">Footnote {fn.marker && `“${fn.marker}”`}</h3>
+                <StatusBadge status={fn.status} />
+                <span className="text-sm text-ink-muted">applies to {linked.size} figure(s)</span>
+              </div>
+              <PublishedEditWarning status={fn.status} />
+              <ActionForm action={updateFootnoteAction.bind(null, fn.id)} submitLabel="Save footnote">
+                <FootnoteFields footnote={fn} />
+              </ActionForm>
+              <details>
+                <summary className="cursor-pointer text-sm font-medium">Figures this note applies to</summary>
+                {sortedStats.length === 0 ? (
+                  <p className="mt-2 text-sm text-ink-muted">Enter figures above first.</p>
+                ) : (
+                  <ActionForm action={setFootnoteLinksAction.bind(null, fn.id)} submitLabel="Save links" className="mt-3 space-y-3">
+                    <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                      {sortedStats.map((st) => (
+                        <label key={st.id} className="flex items-center gap-2">
+                          <input type="checkbox" name="stat" value={st.id} defaultChecked={linked.has(st.id)} />
+                          {label(st)}
+                        </label>
+                      ))}
+                    </div>
+                  </ActionForm>
+                )}
+              </details>
+              <details>
+                <summary className="cursor-pointer text-sm font-medium">Verification and citations</summary>
+                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                  <StatusPanel recordKey="statistic_footnote" record={fn} />
+                  <div className="space-y-4">
+                    <CitationsPanel recordKey="statistic_footnote" recordId={fn.id} />
+                    <DeletePanel recordKey="statistic_footnote" id={fn.id} status={fn.status} redirectTo={`/admin/reports/${report.id}`} />
+                  </div>
+                </div>
+              </details>
+            </article>
+          );
+        })}
+
+        <details className="border border-dashed border-rule-strong p-4">
+          <summary className="cursor-pointer font-medium">Add a footnote</summary>
+          <div className="mt-3">
+            <ActionForm action={createFootnoteAction.bind(null, report.id)} submitLabel="Add footnote">
+              <FootnoteFields />
+            </ActionForm>
+          </div>
+        </details>
+      </section>
+    </div>
+  );
+}
+
+function FootnoteFields({ footnote }: { footnote?: { marker: string | null; page: string | null; originalText: string; summary: string | null } }) {
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField name="marker" label="Marker" defaultValue={footnote?.marker} hint="As printed, e.g. * or 3." />
+        <TextField name="page" label="Page" defaultValue={footnote?.page} hint="e.g. p. 41" />
+      </div>
+      <TextArea name="originalText" label="Footnote text, verbatim" required rows={3} defaultValue={footnote?.originalText} />
+      <TextArea name="summary" label="Plain-language summary (optional)" rows={2} defaultValue={footnote?.summary} hint="Shown as “In plain terms”, alongside the verbatim text." />
+    </>
+  );
+}
