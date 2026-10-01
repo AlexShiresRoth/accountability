@@ -15,6 +15,7 @@ import {
   removeCitation,
   saveStatisticsGrid,
   setFootnoteLinks,
+  unfoundedKey,
   updateSource,
 } from "./records";
 import { acceptCandidateSchema, collegeSchema, formValues, sourceSchema } from "./validation";
@@ -65,6 +66,69 @@ describe("statistics grid parsing", () => {
       { year: 2024, offense: "stalking", geography: "noncampus", value: null },
     ]);
     expect(errors).toHaveLength(2);
+  });
+});
+
+describe("unfounded counts", () => {
+  it("attaches unfounded counts to their cell; blank and '-' mean none given", () => {
+    const { entries, errors } = parseStatisticsGrid([
+      [cellKey(2024, "rape", "on_campus"), "5"],
+      [unfoundedKey(2024, "rape", "on_campus"), "1"],
+      [cellKey(2024, "fondling", "on_campus"), "2"],
+      [unfoundedKey(2024, "fondling", "on_campus"), ""],
+      [cellKey(2024, "stalking", "on_campus"), "3"],
+      [unfoundedKey(2024, "stalking", "on_campus"), "-"],
+    ]);
+    expect(errors).toEqual([]);
+    expect(entries.map((e) => [e.offense, e.value, e.unfounded])).toEqual([
+      ["rape", 5, 1],
+      ["fondling", 2, null],
+      ["stalking", 3, null],
+    ]);
+  });
+
+  it("rejects an unfounded count without its figure, and invalid values", () => {
+    const { errors } = parseStatisticsGrid([
+      [cellKey(2024, "rape", "on_campus"), ""],
+      [unfoundedKey(2024, "rape", "on_campus"), "2"],
+      [cellKey(2024, "fondling", "on_campus"), "1"],
+      [unfoundedKey(2024, "fondling", "on_campus"), "two"],
+      [unfoundedKey(2023, "stalking", "noncampus"), "1"],
+    ]);
+    expect(errors).toEqual([
+      expect.stringContaining("fondling (on campus), unfounded"),
+      "2024 rape (on campus): enter the figure before its unfounded count.",
+      "2023 stalking (noncampus): unfounded count submitted without its figure.",
+    ]);
+  });
+
+  it("saves unfounded counts and unpublishes a published figure whose unfounded count changes", async () => {
+    const r = await report("verified");
+    const stat = await f.statistic({ cleryReportId: r.id, count: 4, unfoundedCount: null });
+
+    const same = await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 4, unfounded: null }], actor);
+    expect(same).toMatchObject({ ok: true, value: { updated: 0 } });
+    expect(await getStatus(db, "crime_statistic", stat.id)).toBe("verified");
+
+    const changed = await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 4, unfounded: 1 }], actor);
+    expect(changed).toMatchObject({ ok: true, value: { updated: 1, unpublished: 1 } });
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.id, stat.id));
+    expect(row).toMatchObject({ count: 4, unfoundedCount: 1, status: "pending_review" });
+  });
+
+  it("leaves the unfounded count alone when its field is not submitted", async () => {
+    const r = await report();
+    const stat = await f.statistic({ cleryReportId: r.id, count: 2, unfoundedCount: 1 });
+    await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 3 }], actor);
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.id, stat.id));
+    expect(row).toMatchObject({ count: 3, unfoundedCount: 1 });
+  });
+
+  it("stores the unfounded count on new figures", async () => {
+    const r = await report();
+    await saveStatisticsGrid(db, r.id, [{ year: 2023, offense: "stalking", geography: "noncampus", value: 0, unfounded: 2 }], actor);
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, r.id));
+    expect(row).toMatchObject({ count: 0, unfoundedCount: 2 });
   });
 });
 
@@ -227,6 +291,22 @@ describe("inbox", () => {
     const d = await candidate(college.id);
     expect(await dismissCandidate(db, d.id, actor)).toMatchObject({ ok: true });
     expect(await dismissCandidate(db, d.id, actor)).toMatchObject({ ok: false });
+  });
+
+  it("requires the publisher's own URL for items found via Google News", async () => {
+    const college = await f.college();
+    const [c] = await db
+      .insert(s.candidateItems)
+      .values({ url: `https://news.google.com/rss/articles/${crypto.randomUUID()}`, title: "T", publisher: "CBS News", collegeId: college.id })
+      .returning();
+
+    expect(await acceptCandidate(db, c.id, input(college.id), actor)).toMatchObject({ ok: false });
+    expect(acceptCandidateSchema.safeParse({ ...input(college.id), articleUrl: "https://news.google.com/articles/abc" }).success).toBe(false);
+
+    const res = await acceptCandidate(db, c.id, input(college.id, { articleUrl: "https://www.cbsnews.com/news/example/" }), actor);
+    expect(res.ok).toBe(true);
+    const [src] = await db.select().from(s.sources).where(eq(s.sources.id, (res as { value: { sourceId: string } }).value.sourceId));
+    expect(src.url).toBe("https://www.cbsnews.com/news/example/");
   });
 
   it("requires a neutral summary and a case link for case-specific coverage", () => {

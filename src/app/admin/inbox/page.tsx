@@ -8,11 +8,20 @@ import { requireResearcherPage } from "@/lib/admin/session";
 import { candidateStatuses, coverageTopics, type CandidateStatus } from "@/lib/enums";
 import { coverageTopicLabels } from "@/lib/labels";
 import { sourceTypes } from "@/lib/source-types";
+import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
+import { gdeltQueries } from "@/jobs/discovery/sources";
 import { acceptCandidateAction, dismissCandidateAction } from "../actions";
 
 export const metadata = { title: "Inbox" };
 
 const tabLabels: Record<CandidateStatus, string> = { new: "New", accepted: "Accepted", dismissed: "Dismissed" };
+
+/** Search results only have to mention the college somewhere in the article; flag headlines that don't. */
+function headlineMissesCollege(title: string | null, slug: string | null): string | null {
+  const shortName = gdeltQueries.find((q) => q.collegeSlug === slug)?.shortName;
+  if (!title || !shortName) return null;
+  return new RegExp(`\\b${shortName}\\b`, "i").test(title) ? null : shortName;
+}
 
 export default async function InboxPage({ searchParams }: PageProps<"/admin/inbox">) {
   await requireResearcherPage();
@@ -57,7 +66,13 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
               <a href={c.url} target="_blank" rel="noopener noreferrer">
                 {c.title ?? c.url}
               </a>
+              {isGoogleNewsUrl(c.url) && <span className="ml-2 text-xs font-normal text-ink-muted">(opens via Google News)</span>}
             </p>
+            {status === "new" && headlineMissesCollege(c.title, c.collegeSlug) && (
+              <p className="mt-1 text-xs font-medium text-caution-ink">
+                Headline doesn&rsquo;t mention {headlineMissesCollege(c.title, c.collegeSlug)}. The article may only mention it in passing.
+              </p>
+            )}
             {c.snippet && <p className="mt-1 text-ink-muted">{c.snippet}</p>}
             {status !== "new" && (
               <p className="mt-2 text-sm text-ink-muted">
@@ -124,6 +139,17 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           defaultValue={c.publishedAt?.toISOString().slice(0, 10)}
                         />
                         <TextField name="title" label="Headline (stored on the source)" required defaultValue={c.title} />
+                        {isGoogleNewsUrl(c.url) && (
+                          <div className="sm:col-span-2">
+                            <TextField
+                              name="articleUrl"
+                              label="Publisher's article URL"
+                              type="url"
+                              required
+                              hint="Found via Google News, whose links don't point at the publisher. Open the article above, then paste the address from your browser."
+                            />
+                          </div>
+                        )}
                       </div>
                       <TextArea
                         name="summary"

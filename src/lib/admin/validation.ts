@@ -1,5 +1,6 @@
 // Input validation for admin forms. Form values arrive as strings; empty strings become null.
 import { z } from "zod";
+import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
 import { coverageScopes, coverageTopics, sourceTypes, verificationStatuses } from "@/lib/enums";
 
 export function formValues(form: FormData): Record<string, string> {
@@ -120,6 +121,12 @@ export const acceptCandidateSchema = z
     publisher: required("Publisher"),
     title: required("Title", 1000),
     publicationDate: isoDate,
+    /** The publisher's own URL. Required when the candidate was found via Google News. */
+    articleUrl: webUrl,
+  })
+  .refine((v) => !v.articleUrl || !isGoogleNewsUrl(v.articleUrl), {
+    message: "Paste the publisher's own article URL, not a Google News link. Open the article, then copy the address bar.",
+    path: ["articleUrl"],
   })
   .refine((v) => v.scope === "institutional" || v.caseId, { message: "Case-specific coverage must be linked to a case.", path: ["caseId"] })
   .refine((v) => v.summary.toLowerCase() !== v.title.toLowerCase(), {

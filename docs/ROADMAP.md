@@ -14,6 +14,8 @@ legal/status distinctions, researcher usability, public usability, performance, 
 | 4. Case timelines | Legal-status badges, attributed events, superseded events, corrections, outcome-not-located |
 | Discovery job (manual) | `pnpm discover`: feeds + GDELT → `candidate_item` (dev only, never publishes) |
 | 5a. Admin core | Sign-in, dashboard, verification workflow + audit log, inbox, sources, colleges, reports, statistics grid, footnotes, citations |
+| 5a follow-ups | Unfounded counts in the grid and on profiles; per-figure status review on report pages |
+| Discovery: Google News | Keyless Google News search per college; publisher URL required on accept; headline de-dup and re-filing; terms cover crimes against women broadly (shared list in `src/jobs/discovery/terms.ts`); Columbia results must name Columbia in the headline |
 
 ## Next
 
@@ -52,6 +54,9 @@ Setup, architecture, editorial principles, and how verified data is added.
       Spectator, Columbia News (see `src/jobs/discovery/sources.ts`).
 - [ ] Cornell candidates from the first discovery run (developing Chi Phi case): triage in the inbox and
       verify against primary records before any case record is created.
+
+- [ ] Columbia headline rule trades recall for precision (~3 relevant of ~40 dropped in a 90-day test, e.g. essays
+      that reference Columbia only in the body). Revisit if a Columbia Spectator feed or GDELT becomes available.
 
 ## Future work (outside MVP)
 

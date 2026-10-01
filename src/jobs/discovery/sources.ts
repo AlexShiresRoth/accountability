@@ -2,7 +2,7 @@
 //
 // Gaps (no public feed located, 2026-09-29): Cornell Chronicle (topic feeds redirect/404),
 // statements.cornell.edu, The Harvard Crimson, Columbia Daily Spectator, Columbia News (403 to automated requests).
-// GDELT partially covers these outlets. On 2026-09-29 GDELT returned HTTP 429 to every request from the
+// GDELT and Google News search cover these outlets and national/local press. On 2026-09-29 GDELT returned HTTP 429 to every request from the
 // development network, even after minute-long pauses; re-test from the deployed environment.
 
 export type FeedSource = {
@@ -14,8 +14,15 @@ export type FeedSource = {
 
 export type CollegeQuery = {
   collegeSlug: string;
-  /** Exact phrases GDELT must match (any of them). */
+  /** Exact phrases the search must match (any of them). */
   names: string[];
+  /** How headlines usually refer to the institution; used to re-file stories about another tracked school. */
+  shortName: string;
+  /**
+   * Keep search results only when the headline names the institution. For names that full-text search
+   * matches too loosely (boilerplate mentions, or ambiguous names like "Columbia").
+   */
+  headlineMustName?: boolean;
 };
 
 export const feeds: FeedSource[] = [
@@ -23,8 +30,9 @@ export const feeds: FeedSource[] = [
   { url: "https://news.harvard.edu/gazette/feed/", publisher: "The Harvard Gazette", collegeSlug: "harvard-university" },
 ];
 
+/** Exact-name queries, used for both GDELT and Google News search. */
 export const gdeltQueries: CollegeQuery[] = [
-  { collegeSlug: "cornell-university", names: ["Cornell University"] },
-  { collegeSlug: "harvard-university", names: ["Harvard University", "Harvard College"] },
-  { collegeSlug: "columbia-university", names: ["Columbia University"] },
+  { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
+  { collegeSlug: "harvard-university", names: ["Harvard University", "Harvard College"], shortName: "Harvard" },
+  { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia", headlineMustName: true },
 ];
