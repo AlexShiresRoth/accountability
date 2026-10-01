@@ -7,10 +7,14 @@ import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
 import { decodeEntities, parseFeed } from "./feed-parser";
 import { buildGdeltQuery, parseGdeltResponse } from "./gdelt";
+import { searchTermGroups } from "./terms";
+import { googleNewsUrl, headlineKey, isGoogleNewsUrl, parseGoogleNews, stripPublisherSuffix } from "./google-news";
 import { isRelevant, suggestTopic } from "./relevance";
 import { runDiscovery, type FetchText } from "./run";
 import { canonicalizeUrl } from "./urls";
 
+/** Test fakes answer only the first search-term group, so each fixture is returned once per query. */
+const isFirstGroup = (url: string) => decodeURIComponent(url).includes("misconduct");
 const rss = (items: string) => `<?xml version="1.0"?><rss><channel><title>T</title>${items}</channel></rss>`;
 const item = (title: string, link: string, description = "") =>
   `<item><title><![CDATA[${title}]]></title><link><![CDATA[${link}]]></link><pubDate>Tue, 29 Sep 2026 18:24:03 -0400</pubDate><description><![CDATA[${description}]]></description></item>`;
@@ -80,8 +84,8 @@ describe("canonicalizeUrl", () => {
 
 describe("GDELT", () => {
   it("builds queries with parentheses only around OR'd terms", () => {
-    expect(buildGdeltQuery(["Cornell University"])).toMatch(/^"Cornell University" \("Title IX" OR /);
-    expect(buildGdeltQuery(["Harvard University", "Harvard College"])).toMatch(/^\("Harvard University" OR "Harvard College"\) \(/);
+    expect(buildGdeltQuery(["Cornell University"], ['"sexual assault"', "rape"])).toBe('"Cornell University" ("sexual assault" OR rape) sourcelang:english');
+    expect(buildGdeltQuery(["Harvard University", "Harvard College"], ["stalking"])).toMatch(/^\("Harvard University" OR "Harvard College"\) \(stalking\)/);
   });
 
   it("parses articles and throws on rate-limit text", () => {
@@ -124,12 +128,16 @@ describe("runDiscovery", () => {
     sleep: async () => {},
     feeds: [{ url: "https://sun.example/feed", publisher: "The Sun", collegeSlug: "cornell-university" }],
     gdeltQueries: [
-      { collegeSlug: "harvard-university", names: ["Harvard University"] },
-      { collegeSlug: "missing-college", names: ["Nowhere"] },
+      { collegeSlug: "harvard-university", names: ["Harvard University"], shortName: "Harvard" },
+      { collegeSlug: "missing-college", names: ["Nowhere"], shortName: "Nowhere" },
     ],
+    sources: { googleNews: false },
   });
 
-  const fetchOk: FetchText = async (url) => ({ status: 200, body: url.includes("gdelt") ? gdeltBody : feedBody });
+  const fetchOk: FetchText = async (url) => ({
+    status: 200,
+    body: url.includes("gdelt") ? (isFirstGroup(url) ? gdeltBody : "{}") : feedBody,
+  });
 
   it("stores only relevant, de-duplicated candidates and records the run", async () => {
     const result = await runDiscovery(options(fetchOk));
@@ -157,7 +165,7 @@ describe("runDiscovery", () => {
 
   it("keeps going when one source fails, and records the error", async () => {
     const failingFeed: FetchText = async (url) =>
-      url.includes("gdelt") ? { status: 200, body: gdeltBody } : { status: 503, body: "down" };
+      url.includes("gdelt") ? { status: 200, body: isFirstGroup(url) ? gdeltBody : "{}" } : { status: 503, body: "down" };
     const result = await runDiscovery(options(failingFeed));
     expect(result.errors.some((e) => e.startsWith("feed: The Sun: HTTP 503"))).toBe(true);
     expect(result.bySource["gdelt: Harvard University"]).toEqual({ found: 2, relevant: 2 });
@@ -169,4 +177,191 @@ describe("runDiscovery", () => {
     expect(await listPublicSources({ db, hideDemo: false })).toEqual([]);
     expect(await getCollegeProfile({ db, hideDemo: false }, "cornell-university")).toBeNull();
   });
+});
+
+const gnItem = (title: string, publisher: string, id: string) =>
+  `<item><title>${title} - ${publisher}</title><link>https://news.google.com/rss/articles/${id}?oc=5</link><guid isPermaLink="false">${id}</guid><pubDate>Wed, 30 Sep 2026 00:07:00 GMT</pubDate><description>&lt;a href="https://news.google.com/rss/articles/${id}"&gt;x&lt;/a&gt;</description><source url="https://www.${publisher.toLowerCase().replace(/\W/g, "")}.com">${publisher}</source></item>`;
+
+describe("Google News", () => {
+  it("builds a time-bounded exact-name query", () => {
+    const url = new URL(googleNewsUrl(["Harvard University", "Harvard College"], ["stalking", '"dating violence"'], 90));
+    expect(url.hostname).toBe("news.google.com");
+    expect(url.searchParams.get("q")).toBe('("Harvard University" OR "Harvard College") (stalking OR "dating violence") when:90d');
+  });
+
+  it("parses items, keeping the real publisher and stripping it from the headline", () => {
+    const [i] = parseGoogleNews(`<rss><channel>${gnItem("Prosecutors reopen inquiry &amp; review", "CBS News", "AAA")}</channel></rss>`);
+    expect(i).toMatchObject({
+      url: "https://news.google.com/rss/articles/AAA?oc=5",
+      title: "Prosecutors reopen inquiry & review",
+      publisher: "CBS News",
+      publisherUrl: "https://www.cbsnews.com",
+    });
+    expect(i.publishedAt?.toISOString()).toBe("2026-09-30T00:07:00.000Z");
+  });
+
+  it("only strips an exact publisher suffix", () => {
+    expect(stripPublisherSuffix("A - B - CNN", "CNN")).toBe("A - B");
+    expect(stripPublisherSuffix("Title - Other", "CNN")).toBe("Title - Other");
+  });
+
+  it("recognizes Google links and normalizes headlines for matching", () => {
+    expect(isGoogleNewsUrl("https://news.google.com/rss/articles/x")).toBe(true);
+    expect(isGoogleNewsUrl("https://www.nytimes.com/2026/09/x.html")).toBe(false);
+    expect(headlineKey("Cornell’s “Review” Begins!")).toBe(headlineKey("cornells review begins"));
+    expect(headlineKey("Short")).toBeNull();
+  });
+});
+
+describe("runDiscovery with Google News", () => {
+  let db: Database;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+    await fixtures(db).college({ slug: "cornell-university", name: "Cornell University", status: "draft" });
+  });
+  afterAll(() => close());
+
+  const feed = rss(item("Title IX office changes procedures", "https://sun.example/a"));
+  const google = `<rss><channel>${[
+    gnItem("Title IX office changes procedures", "The Sun", "DUP"),
+    gnItem("Prosecutors reopen sexual assault inquiry", "CBS News", "CBS1"),
+    gnItem("Prosecutors reopen sexual assault inquiry", "WSYR", "SYND"),
+    gnItem("Governor requests independent review", "The New York Times", "NYT1"),
+  ].join("")}</channel></rss>`;
+
+  const run = () =>
+    runDiscovery({
+      db,
+      sleep: async () => {},
+      fetchText: async (url) => ({
+        status: 200,
+        body: url.includes("news.google.com") ? (isFirstGroup(url) ? google : rss("")) : feed,
+      }),
+      feeds: [{ url: "https://sun.example/feed", publisher: "The Sun", collegeSlug: "cornell-university" }],
+      gdeltQueries: [{ collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" }],
+      sources: { gdelt: false },
+      googleNewsDays: 90,
+    });
+
+  it("adds other outlets, skipping headlines already found via a feed or syndicated twice", async () => {
+    const result = await run();
+    expect(result.bySource["google news: Cornell University"]).toEqual({ found: 4, relevant: 4 });
+    expect(result.duplicateHeadlines).toBe(2);
+    const rows = await db.select().from(s.candidateItems);
+    expect(rows.map((r) => r.publisher).sort()).toEqual(["CBS News", "The New York Times", "The Sun"]);
+    expect(rows.find((r) => r.publisher === "CBS News")!.title).toBe("Prosecutors reopen sexual assault inquiry");
+  });
+
+  it("does not re-add stories already in the inbox", async () => {
+    const result = await run();
+    expect(result.created).toBe(0);
+    expect(await db.select().from(s.candidateItems)).toHaveLength(3);
+  });
+});
+
+describe("re-filing search results by headline", () => {
+  let db: Database;
+  let close: () => Promise<void>;
+  let ids: Record<string, string>;
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+    const f = fixtures(db);
+    ids = {
+      cornell: (await f.college({ slug: "cornell-university", status: "draft" })).id,
+      columbia: (await f.college({ slug: "columbia-university", status: "draft" })).id,
+    };
+  });
+  afterAll(() => close());
+
+  it("files a story under the tracked school its headline names", async () => {
+    const google = (q: string) =>
+      `<rss><channel>${
+        q.includes("Columbia")
+          ? gnItem("Cornell rape case sparks debate on campuses", "The Boston Globe", "B1") +
+            gnItem("Columbia revises Title IX procedures", "Columbia Spectator", "C1") +
+            gnItem("Campus sexual assault expulsions are rare in New York", "WSTM", "W1")
+          : gnItem("Cornell rape case sparks debate on campuses", "The Boston Globe", "B2")
+      }</channel></rss>`;
+    const result = await runDiscovery({
+      db,
+      sleep: async () => {},
+      fetchText: async (url) => ({ status: 200, body: isFirstGroup(url) ? google(decodeURIComponent(url)) : rss("") }),
+      feeds: [],
+      gdeltQueries: [
+        { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
+        { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia" },
+      ],
+      sources: { gdelt: false },
+    });
+    expect(result.refiled).toBe(1);
+    expect(result.duplicateHeadlines).toBe(1); // the re-filed Boston Globe story was already found under Cornell
+
+    const rows = await db.select().from(s.candidateItems);
+    const byCollege = (id: string) => rows.filter((r) => r.collegeId === id).map((r) => r.title).sort();
+    expect(byCollege(ids.cornell)).toEqual(["Cornell rape case sparks debate on campuses"]);
+    // Headlines naming no tracked school stay with the query that found them.
+    expect(byCollege(ids.columbia)).toEqual(["Campus sexual assault expulsions are rare in New York", "Columbia revises Title IX procedures"]);
+  });
+});
+
+describe("headline requirement", () => {
+  let db: Database;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+    const f = fixtures(db);
+    await f.college({ slug: "cornell-university", status: "draft" });
+    await f.college({ slug: "columbia-university", status: "draft" });
+  });
+  afterAll(() => close());
+
+  it("drops search results whose headline doesn't name a strict school, after re-filing", async () => {
+    const google = gnItem("Columbia students protest handling of harassment complaints", "amNewYork", "A") +
+      gnItem("Judge delays hearing in Syracuse rape case", "WSTM", "B") +
+      gnItem("Cornell expels students after sexual misconduct finding", "CNN", "C");
+    const result = await runDiscovery({
+      db,
+      sleep: async () => {},
+      fetchText: async (url) => ({
+        status: 200,
+        body: isFirstGroup(url) && decodeURIComponent(url).includes("Columbia") ? `<rss><channel>${google}</channel></rss>` : rss(""),
+      }),
+      feeds: [],
+      gdeltQueries: [
+        { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
+        { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia", headlineMustName: true },
+      ],
+      sources: { gdelt: false },
+    });
+    expect(result.droppedNoHeadlineName).toBe(1);
+    const rows = await db.select().from(s.candidateItems);
+    expect(rows.map((r) => r.title).sort()).toEqual([
+      "Columbia students protest handling of harassment complaints",
+      "Cornell expels students after sexual misconduct finding",
+    ]);
+  });
+});
+
+describe("search terms", () => {
+  it("cover crimes against women beyond sexual assault", () => {
+    const all = searchTermGroups.flat().join(" ");
+    for (const t of ["stalking", "domestic violence", "dating violence", "sexual harassment", "sextortion", "revenge porn", "sex trafficking", "femicide"]) {
+      expect(all).toContain(t);
+    }
+  });
+
+  it.each([
+    "Former student charged with stalking classmate",
+    "Report on intimate partner violence among undergraduates",
+    "Police warn of drink spiking at bars near campus",
+    "Student accused of sharing intimate images without consent",
+    "Sextortion scheme targeted students, prosecutors say",
+    "Professor resigns after sexual harassment findings",
+  ])("feed filter keeps: %s", (t) => expect(isRelevant(t)).toBe(true));
+
+  it.each(["University sued over harassment of pro-Palestinian students", "Report finds harassment of Jewish students rose"])(
+    "feed filter skips harassment without a sexual or gender context: %s",
+    (t) => expect(isRelevant(t)).toBe(false),
+  );
 });

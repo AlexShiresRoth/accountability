@@ -86,6 +86,8 @@ export async function updateReport(db: Database, id: string, input: Omit<ReportI
 // ---------------------------------------------------------------------------
 
 export const cellKey = (year: number, offense: Offense, geography: CleryGeography) => `cell|${year}|${offense}|${geography}`;
+/** Field name for a cell's unfounded count (reports that law enforcement determined false or baseless). */
+export const unfoundedKey = (year: number, offense: Offense, geography: CleryGeography) => `unf|${year}|${offense}|${geography}`;
 
 /** "" = no figure entered; "-" (or "—", "n/a") = reported as not available (stored as null); digits = count. */
 export function parseCellValue(raw: string): { value: number | null | undefined } | { error: string } {
@@ -96,31 +98,63 @@ export function parseCellValue(raw: string): { value: number | null | undefined 
   return { error: `"${raw}" is not a whole number. Use "-" for a figure the report does not give.` };
 }
 
-export type GridEntry = { year: number; offense: Offense; geography: CleryGeography; value: number | null | undefined };
+export type GridEntry = {
+  year: number;
+  offense: Offense;
+  geography: CleryGeography;
+  /** undefined = no figure (no row); null = shown as unavailable; number = count. */
+  value: number | null | undefined;
+  /** Unfounded count. null = none given (blank or "-"); undefined = field not submitted, leave unchanged. */
+  unfounded?: number | null;
+};
+
+const describeCell = (year: number | string, offense: string, geography: string) =>
+  `${year} ${offense.replace("_", " ")} (${geography.replaceAll("_", " ")})`;
 
 export function parseStatisticsGrid(form: Iterable<[string, FormDataEntryValue]>): { entries: GridEntry[]; errors: string[] } {
-  const entries: GridEntry[] = [];
+  const cells = new Map<string, GridEntry>();
+  const unfounded = new Map<string, { label: string; value: number | null }>();
   const errors: string[] = [];
+
   for (const [name, raw] of form) {
-    if (!name.startsWith("cell|") || typeof raw !== "string") continue;
+    const prefix = name.split("|")[0];
+    if ((prefix !== "cell" && prefix !== "unf") || typeof raw !== "string") continue;
     const [, y, offense, geography] = name.split("|");
     const year = Number(y);
     if (!Number.isInteger(year) || !offenses.includes(offense as Offense) || !cleryGeographies.includes(geography as CleryGeography)) {
       errors.push(`Unrecognized field ${name}.`);
       continue;
     }
+    const key = cellKey(year, offense as Offense, geography as CleryGeography);
+    const label = describeCell(year, offense, geography);
     const parsed = parseCellValue(raw);
-    if ("error" in parsed) errors.push(`${year} ${offense.replace("_", " ")} (${geography.replaceAll("_", " ")}): ${parsed.error}`);
-    else entries.push({ year, offense: offense as Offense, geography: geography as CleryGeography, value: parsed.value });
+    if ("error" in parsed) {
+      errors.push(`${label}${prefix === "unf" ? ", unfounded" : ""}: ${parsed.error}`);
+      continue;
+    }
+    if (prefix === "cell") cells.set(key, { year, offense: offense as Offense, geography: geography as CleryGeography, value: parsed.value });
+    else unfounded.set(key, { label, value: parsed.value ?? null });
   }
-  return { entries, errors };
+
+  for (const [key, u] of unfounded) {
+    const cell = cells.get(key);
+    if (!cell) {
+      errors.push(`${u.label}: unfounded count submitted without its figure.`);
+    } else if (u.value !== null && cell.value === undefined) {
+      errors.push(`${u.label}: enter the figure before its unfounded count.`);
+    } else {
+      cell.unfounded = cell.value === undefined ? undefined : u.value;
+    }
+  }
+  return { entries: [...cells.values()], errors };
 }
 
 export type GridSaveSummary = { created: number; updated: number; deleted: number; unpublished: number };
 
 /**
  * Applies a submitted grid to a report. All-or-nothing: validation happens before any write.
- * Changed published figures are unpublished for re-verification. Published figures cannot be cleared.
+ * Changed published figures (count or unfounded count) are unpublished for re-verification.
+ * Published figures cannot be cleared.
  */
 export async function saveStatisticsGrid(db: Database, reportId: string, entries: GridEntry[], actor: string): Promise<MutationResult<GridSaveSummary>> {
   const existing = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, reportId));
@@ -131,7 +165,7 @@ export async function saveStatisticsGrid(db: Database, reportId: string, entries
     .filter((e) => e.value === undefined)
     .map((e) => byKey.get(cellKey(e.year, e.offense, e.geography)))
     .filter((r): r is NonNullable<typeof r> => Boolean(r && isPublic(r.status)))
-    .map((r) => `${r.calendarYear} ${r.offense.replace("_", " ")} (${r.geography.replaceAll("_", " ")}) is published and can't be cleared. Enter "-" or reject it instead.`);
+    .map((r) => `${describeCell(r.calendarYear, r.offense, r.geography)} is published and can't be cleared. Enter "-" or reject it instead.`);
   if (problems.length) return fail(...problems);
 
   const summary: GridSaveSummary = { created: 0, updated: 0, deleted: 0, unpublished: 0 };
@@ -151,11 +185,14 @@ export async function saveStatisticsGrid(db: Database, reportId: string, entries
           offense: e.offense,
           geography: e.geography,
           count: e.value,
+          unfoundedCount: e.unfounded ?? null,
           createdBy: actor,
         });
         summary.created++;
-      } else if (row.count !== e.value) {
-        await t.update(s.crimeStatistics).set({ count: e.value }).where(eq(s.crimeStatistics.id, row.id));
+      } else {
+        const unfounded = e.unfounded === undefined ? row.unfoundedCount : e.unfounded;
+        if (row.count === e.value && row.unfoundedCount === unfounded) continue;
+        await t.update(s.crimeStatistics).set({ count: e.value, unfoundedCount: unfounded }).where(eq(s.crimeStatistics.id, row.id));
         summary.updated++;
         if (await markEdited(t, "crime_statistic", row.id, actor)) summary.unpublished++;
       }

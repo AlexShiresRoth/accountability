@@ -114,6 +114,7 @@ function niceMax(n: number) {
 function describeCell(year: number, cell: ResolvedStatistic | undefined, footnoteById: Map<string, FootnoteRef>) {
   if (!cell || cell.count === null) return `${year}: not reported or not located`;
   const parts = [`${year}: ${cell.count} reported`];
+  if (cell.unfoundedCount) parts.push(`${cell.unfoundedCount} unfounded (not included)`);
   for (const f of uniqueByNumber(cell.footnoteIds, footnoteById)) parts.push(`see note ${f.number}`);
   if (cell.revisions.length) {
     parts.push(
@@ -249,6 +250,7 @@ function StatisticsTable({
   cellFor: (year: number, offense: Offense) => ResolvedStatistic | undefined;
   footnoteById: Map<string, FootnoteRef>;
 }) {
+  const hasUnfounded = rows.some((o) => years.some((y) => cellFor(y, o)?.unfoundedCount));
   const revisions = rows.flatMap((o) =>
     years.flatMap((y) => {
       const c = cellFor(y, o);
@@ -286,6 +288,11 @@ function StatisticsTable({
                   return (
                     <td key={y} className="tabular px-3 py-2 text-right">
                       {!c || c.count === null ? <span className="text-ink-muted">—</span> : c.count}
+                      {c?.unfoundedCount ? (
+                        <span className="ml-1 text-[0.75em] whitespace-nowrap text-ink-muted" title="Determined by law enforcement to be false or baseless; not included in the count">
+                          +{c.unfoundedCount} unfounded
+                        </span>
+                      ) : null}
                       {uniqueByNumber(c?.footnoteIds ?? [], footnoteById).map((f) => (
                         <a key={f.number} href={`#${f.anchor}`} className="ml-0.5 align-super text-[0.7em]" aria-label={`Note ${f.number}`}>
                           [{f.number}]
@@ -317,6 +324,15 @@ function StatisticsTable({
           <dt className="inline">rev.</dt>{" "}
           <dd className="inline">An earlier report gave a different figure; the most recent report&rsquo;s figure is shown.</dd>
         </div>
+        {hasUnfounded && (
+          <div>
+            <dt className="inline">unfounded</dt>{" "}
+            <dd className="inline">
+              Reports that law enforcement determined, after investigation, to be false or baseless. Listed separately in the
+              report and not included in the count.
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="inline text-caution-ink">◦</dt> <dd className="inline">Under review; this figure is being re-verified.</dd>
         </div>

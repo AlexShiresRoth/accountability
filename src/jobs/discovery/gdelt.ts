@@ -5,31 +5,20 @@ import type { FetchText } from "./run";
 
 const ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
 
-// Full-text terms (any). Kept in sync in spirit with relevance.ts; GDELT does the matching here.
-const TOPIC_TERMS = [
-  '"Title IX"',
-  '"sexual assault"',
-  '"sexual misconduct"',
-  '"sexual harassment"',
-  '"sexual violence"',
-  '"dating violence"',
-  '"domestic violence"',
-  "stalking",
-  "rape",
-];
+
 
 export type GdeltArticle = { url: string; title: string | null; seenAt: Date | null; domain: string | null };
 
-export function buildGdeltQuery(names: string[]): string {
+export function buildGdeltQuery(names: string[], terms: string[]): string {
   const quoted = names.map((n) => `"${n}"`);
   // GDELT only allows parentheses around OR'd terms.
   const nameClause = quoted.length === 1 ? quoted[0] : `(${quoted.join(" OR ")})`;
-  return `${nameClause} (${TOPIC_TERMS.join(" OR ")}) sourcelang:english`;
+  return `${nameClause} (${terms.join(" OR ")}) sourcelang:english`;
 }
 
-export function gdeltUrl(names: string[], timespan: string, maxRecords = 100): string {
+export function gdeltUrl(names: string[], terms: string[], timespan: string, maxRecords = 100): string {
   const params = new URLSearchParams({
-    query: buildGdeltQuery(names),
+    query: buildGdeltQuery(names, terms),
     mode: "artlist",
     format: "json",
     sort: "datedesc",
@@ -63,8 +52,8 @@ function parseSeenDate(s: string | undefined): Date | null {
   return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])) : null;
 }
 
-export async function fetchGdelt(fetchText: FetchText, sleep: (ms: number) => Promise<void>, names: string[], timespan: string) {
-  const url = gdeltUrl(names, timespan);
+export async function fetchGdelt(fetchText: FetchText, sleep: (ms: number) => Promise<void>, names: string[], terms: string[], timespan: string) {
+  const url = gdeltUrl(names, terms, timespan);
   const attempt = async () => {
     const { status, body } = await fetchText(url);
     if (status === 429) throw new Error("GDELT rate-limited this request (HTTP 429)");

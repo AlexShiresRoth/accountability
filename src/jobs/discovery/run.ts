@@ -7,8 +7,10 @@ import type { Database } from "@/db/types";
 import type { CoverageTopic } from "@/lib/enums";
 import { parseFeed } from "./feed-parser";
 import { fetchGdelt } from "./gdelt";
+import { googleNewsUrl, headlineKey, parseGoogleNews } from "./google-news";
 import { isRelevant, suggestTopic } from "./relevance";
 import { feeds as defaultFeeds, gdeltQueries as defaultQueries, type CollegeQuery, type FeedSource } from "./sources";
+import { searchTermGroups } from "./terms";
 import { canonicalizeUrl } from "./urls";
 
 export type FetchText = (url: string) => Promise<{ status: number; body: string }>;
@@ -19,8 +21,12 @@ export type DiscoveryOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** GDELT lookback window, e.g. "1d" for scheduled runs, "3months" for a backfill. */
   gdeltTimespan?: string;
+  /** Google News lookback in days, e.g. 2 for scheduled runs, 90 for a backfill. */
+  googleNewsDays?: number;
   feeds?: FeedSource[];
+  /** Exact-name queries used for GDELT and Google News. */
   gdeltQueries?: CollegeQuery[];
+  sources?: { gdelt?: boolean; googleNews?: boolean };
 };
 
 export type DiscoveryResult = {
@@ -29,6 +35,12 @@ export type DiscoveryResult = {
   created: number;
   errors: string[];
   bySource: Record<string, { found: number; relevant: number }>;
+  /** Google News items skipped because the same headline was already found via another source. */
+  duplicateHeadlines: number;
+  /** Search results re-filed because the headline names a different tracked institution. */
+  refiled: number;
+  /** Search results dropped because their headline doesn't name an institution configured with headlineMustName. */
+  droppedNoHeadlineName: number;
 };
 
 type Candidate = {
@@ -39,6 +51,7 @@ type Candidate = {
   snippet: string | null;
   collegeId: string;
   suggestedTopic: CoverageTopic;
+  via: "feed" | "gdelt" | "google_news";
 };
 
 export const USER_AGENT = "CampusAccountabilityBot/0.1 (public-interest research; discovery of news coverage)";
@@ -49,6 +62,7 @@ export const defaultFetchText: FetchText = async (url) => {
 };
 
 const GDELT_INTERVAL_MS = 6_000;
+const GOOGLE_NEWS_INTERVAL_MS = 2_000;
 
 export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryResult> {
   const {
@@ -58,7 +72,11 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
     gdeltTimespan = "1d",
     feeds = defaultFeeds,
     gdeltQueries = defaultQueries,
+    googleNewsDays = 2,
+    sources = {},
   } = opts;
+  const useGdelt = sources.gdelt ?? true;
+  const useGoogleNews = sources.googleNews ?? true;
 
   const [run] = await db.insert(s.ingestionRuns).values({ job: "discovery" }).returning({ id: s.ingestionRuns.id });
   const errors: string[] = [];
@@ -95,6 +113,7 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
           snippet: i.snippet,
           collegeId: cid,
           suggestedTopic: suggestTopic(`${i.title ?? ""} ${i.snippet ?? ""}`),
+          via: "feed",
         });
       }
     } catch (err) {
@@ -102,41 +121,141 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
     }
   }
 
-  for (const [index, query] of gdeltQueries.entries()) {
+  let gdeltRequests = 0;
+  for (const query of useGdelt ? gdeltQueries : []) {
     const label = `gdelt: ${query.names.join(" / ")}`;
     const cid = collegeId(query.collegeSlug);
     if (!cid) continue;
-    if (index > 0) await sleep(GDELT_INTERVAL_MS);
-    try {
-      const articles = await fetchGdelt(fetchText, sleep, query.names, gdeltTimespan);
-      bySource[label] = { found: articles.length, relevant: articles.length };
-      for (const a of articles) {
-        candidates.push({
-          url: a.url,
-          title: a.title,
-          publisher: a.domain,
-          publishedAt: a.seenAt,
-          snippet: null,
-          collegeId: cid,
-          suggestedTopic: suggestTopic(a.title ?? ""),
-        });
+    for (const terms of searchTermGroups) {
+      if (gdeltRequests++ > 0) await sleep(GDELT_INTERVAL_MS);
+      try {
+        const articles = await fetchGdelt(fetchText, sleep, query.names, terms, gdeltTimespan);
+        addCount(bySource, label, articles.length);
+        for (const a of articles) {
+          candidates.push({
+            url: a.url,
+            title: a.title,
+            publisher: a.domain,
+            publishedAt: a.seenAt,
+            snippet: null,
+            collegeId: cid,
+            suggestedTopic: suggestTopic(a.title ?? ""),
+            via: "gdelt",
+          });
+        }
+      } catch (err) {
+        errors.push(`${label}: ${message(err)}`);
+        break; // rate-limited or down: don't hammer it with the remaining groups
       }
-    } catch (err) {
-      errors.push(`${label}: ${message(err)}`);
     }
   }
 
+  let googleRequests = 0;
+  for (const query of useGoogleNews ? gdeltQueries : []) {
+    const label = `google news: ${query.names.join(" / ")}`;
+    const cid = collegeId(query.collegeSlug);
+    if (!cid) continue;
+    for (const terms of searchTermGroups) {
+      if (googleRequests++ > 0) await sleep(GOOGLE_NEWS_INTERVAL_MS);
+      try {
+        const { status, body } = await fetchText(googleNewsUrl(query.names, terms, googleNewsDays));
+        if (status !== 200) throw new Error(`HTTP ${status}`);
+        const items = parseGoogleNews(body);
+        addCount(bySource, label, items.length);
+        for (const i of items) {
+          candidates.push({
+            url: i.url,
+            title: i.title,
+            publisher: i.publisher,
+            publishedAt: i.publishedAt,
+            snippet: null,
+            collegeId: cid,
+            suggestedTopic: suggestTopic(i.title ?? ""),
+            via: "google_news",
+          });
+        }
+      } catch (err) {
+        errors.push(`${label}: ${message(err)}`);
+      }
+    }
+  }
+
+  // Full-text search matches any article that mentions the institution, so a story about another tracked
+  // school can arrive under the wrong query. If the headline names a different tracked school and not the
+  // queried one, file it under the school it names.
+  let refiled = 0;
+  const headlineSchools = gdeltQueries
+    .map((q) => ({ id: collegeIdBySlug.get(q.collegeSlug), re: new RegExp(`\\b${escapeRegExp(q.shortName)}\\b`, "i") }))
+    .filter((x): x is { id: string; re: RegExp } => Boolean(x.id));
+  for (const c of candidates) {
+    if (c.via === "feed" || !c.title) continue;
+    const named = headlineSchools.filter((h) => h.re.test(c.title!)).map((h) => h.id);
+    if (named.length && !named.includes(c.collegeId)) {
+      c.collegeId = named[0];
+      refiled++;
+    }
+  }
+
+  // Some institutions require their name in the headline (after re-filing, so a story naming another
+  // tracked school is kept under that school instead).
+  let droppedNoHeadlineName = 0;
+  const strict = new Map(
+    gdeltQueries
+      .filter((q) => q.headlineMustName && collegeIdBySlug.has(q.collegeSlug))
+      .map((q) => [collegeIdBySlug.get(q.collegeSlug)!, new RegExp(`\\b${escapeRegExp(q.shortName)}\\b`, "i")]),
+  );
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const c = candidates[i];
+    const re = c.via === "feed" ? undefined : strict.get(c.collegeId);
+    if (re && !re.test(c.title ?? "")) {
+      candidates.splice(i, 1);
+      droppedNoHeadlineName++;
+    }
+  }
+
+  // Google News links are opaque, so the same story found via a feed or GDELT (or already in the inbox)
+  // is matched by headline instead of URL.
+  const knownHeadlines = new Set<string>();
+  const collegeIds = [...collegeIdBySlug.values()];
+  if (collegeIds.length) {
+    const existing = await db
+      .select({ title: s.candidateItems.title, collegeId: s.candidateItems.collegeId })
+      .from(s.candidateItems)
+      .where(inArray(s.candidateItems.collegeId, collegeIds));
+    for (const e of existing) {
+      const k = headlineKey(e.title);
+      if (k) knownHeadlines.add(`${e.collegeId}|${k}`);
+    }
+  }
+  for (const c of candidates) {
+    const k = headlineKey(c.title);
+    if (k && c.via !== "google_news") knownHeadlines.add(`${c.collegeId}|${k}`);
+  }
+  let duplicateHeadlines = 0;
+  const kept = candidates.filter((c) => {
+    if (c.via !== "google_news") return true;
+    const k = headlineKey(c.title);
+    if (!k) return true;
+    const key = `${c.collegeId}|${k}`;
+    if (knownHeadlines.has(key)) {
+      duplicateHeadlines++;
+      return false;
+    }
+    knownHeadlines.add(key);
+    return true;
+  });
+
   // Canonicalize and de-duplicate within this run; the unique url column de-duplicates across runs.
   const unique = new Map<string, Candidate>();
-  for (const c of candidates) {
+  for (const { via: _via, ...c } of kept) {
     const url = canonicalizeUrl(c.url);
-    if (url && !unique.has(url)) unique.set(url, { ...c, url });
+    if (url && !unique.has(url)) unique.set(url, { ...c, url, via: _via });
   }
 
   const inserted = unique.size
     ? await db
         .insert(s.candidateItems)
-        .values([...unique.values()].map((c) => ({ ...c, ingestionRunId: run.id })))
+        .values([...unique.values()].map(({ via: _via, ...c }) => ({ ...c, ingestionRunId: run.id })))
         .onConflictDoNothing({ target: s.candidateItems.url })
         .returning({ id: s.candidateItems.id })
     : [];
@@ -151,7 +270,14 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
     })
     .where(eq(s.ingestionRuns.id, run.id));
 
-  return { runId: run.id, found: unique.size, created: inserted.length, errors, bySource };
+  return { runId: run.id, found: unique.size, created: inserted.length, errors, bySource, duplicateHeadlines, refiled, droppedNoHeadlineName };
 }
 
+function addCount(bySource: DiscoveryResult["bySource"], label: string, n: number) {
+  const entry = (bySource[label] ??= { found: 0, relevant: 0 });
+  entry.found += n;
+  entry.relevant += n;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));

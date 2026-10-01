@@ -4,7 +4,7 @@ import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
-import { acceptCandidate, dismissCandidate, listCandidates } from "./inbox";
+import { acceptCandidate, candidateCounts, dismissCandidate, listCandidates } from "./inbox";
 import {
   addCitation,
   cellKey,
@@ -15,6 +15,7 @@ import {
   removeCitation,
   saveStatisticsGrid,
   setFootnoteLinks,
+  unfoundedKey,
   updateSource,
 } from "./records";
 import { acceptCandidateSchema, collegeSchema, formValues, sourceSchema } from "./validation";
@@ -65,6 +66,69 @@ describe("statistics grid parsing", () => {
       { year: 2024, offense: "stalking", geography: "noncampus", value: null },
     ]);
     expect(errors).toHaveLength(2);
+  });
+});
+
+describe("unfounded counts", () => {
+  it("attaches unfounded counts to their cell; blank and '-' mean none given", () => {
+    const { entries, errors } = parseStatisticsGrid([
+      [cellKey(2024, "rape", "on_campus"), "5"],
+      [unfoundedKey(2024, "rape", "on_campus"), "1"],
+      [cellKey(2024, "fondling", "on_campus"), "2"],
+      [unfoundedKey(2024, "fondling", "on_campus"), ""],
+      [cellKey(2024, "stalking", "on_campus"), "3"],
+      [unfoundedKey(2024, "stalking", "on_campus"), "-"],
+    ]);
+    expect(errors).toEqual([]);
+    expect(entries.map((e) => [e.offense, e.value, e.unfounded])).toEqual([
+      ["rape", 5, 1],
+      ["fondling", 2, null],
+      ["stalking", 3, null],
+    ]);
+  });
+
+  it("rejects an unfounded count without its figure, and invalid values", () => {
+    const { errors } = parseStatisticsGrid([
+      [cellKey(2024, "rape", "on_campus"), ""],
+      [unfoundedKey(2024, "rape", "on_campus"), "2"],
+      [cellKey(2024, "fondling", "on_campus"), "1"],
+      [unfoundedKey(2024, "fondling", "on_campus"), "two"],
+      [unfoundedKey(2023, "stalking", "noncampus"), "1"],
+    ]);
+    expect(errors).toEqual([
+      expect.stringContaining("fondling (on campus), unfounded"),
+      "2024 rape (on campus): enter the figure before its unfounded count.",
+      "2023 stalking (noncampus): unfounded count submitted without its figure.",
+    ]);
+  });
+
+  it("saves unfounded counts and unpublishes a published figure whose unfounded count changes", async () => {
+    const r = await report("verified");
+    const stat = await f.statistic({ cleryReportId: r.id, count: 4, unfoundedCount: null });
+
+    const same = await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 4, unfounded: null }], actor);
+    expect(same).toMatchObject({ ok: true, value: { updated: 0 } });
+    expect(await getStatus(db, "crime_statistic", stat.id)).toBe("verified");
+
+    const changed = await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 4, unfounded: 1 }], actor);
+    expect(changed).toMatchObject({ ok: true, value: { updated: 1, unpublished: 1 } });
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.id, stat.id));
+    expect(row).toMatchObject({ count: 4, unfoundedCount: 1, status: "pending_review" });
+  });
+
+  it("leaves the unfounded count alone when its field is not submitted", async () => {
+    const r = await report();
+    const stat = await f.statistic({ cleryReportId: r.id, count: 2, unfoundedCount: 1 });
+    await saveStatisticsGrid(db, r.id, [{ year: 2024, offense: "rape", geography: "on_campus", value: 3 }], actor);
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.id, stat.id));
+    expect(row).toMatchObject({ count: 3, unfoundedCount: 1 });
+  });
+
+  it("stores the unfounded count on new figures", async () => {
+    const r = await report();
+    await saveStatisticsGrid(db, r.id, [{ year: 2023, offense: "stalking", geography: "noncampus", value: 0, unfounded: 2 }], actor);
+    const [row] = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, r.id));
+    expect(row).toMatchObject({ count: 0, unfoundedCount: 2 });
   });
 });
 
@@ -214,7 +278,7 @@ describe("inbox", () => {
     expect(src).toMatchObject({ status: "draft", url: c.url, retrievedAt: "2026-09-30", createdBy: actor, type: "reputable_journalism" });
     const [cov] = await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.id, coverageId));
     expect(cov).toMatchObject({ status: "draft", scope: "institutional", caseId: null });
-    expect((await listCandidates(db, "accepted")).map((x) => x.id)).toContain(c.id);
+    expect((await listCandidates(db, "accepted")).items.map((x) => x.id)).toContain(c.id);
   });
 
   it("cannot accept or dismiss a candidate twice", async () => {
@@ -227,6 +291,22 @@ describe("inbox", () => {
     const d = await candidate(college.id);
     expect(await dismissCandidate(db, d.id, actor)).toMatchObject({ ok: true });
     expect(await dismissCandidate(db, d.id, actor)).toMatchObject({ ok: false });
+  });
+
+  it("requires the publisher's own URL for items found via Google News", async () => {
+    const college = await f.college();
+    const [c] = await db
+      .insert(s.candidateItems)
+      .values({ url: `https://news.google.com/rss/articles/${crypto.randomUUID()}`, title: "T", publisher: "CBS News", collegeId: college.id })
+      .returning();
+
+    expect(await acceptCandidate(db, c.id, input(college.id), actor)).toMatchObject({ ok: false });
+    expect(acceptCandidateSchema.safeParse({ ...input(college.id), articleUrl: "https://news.google.com/articles/abc" }).success).toBe(false);
+
+    const res = await acceptCandidate(db, c.id, input(college.id, { articleUrl: "https://www.cbsnews.com/news/example/" }), actor);
+    expect(res.ok).toBe(true);
+    const [src] = await db.select().from(s.sources).where(eq(s.sources.id, (res as { value: { sourceId: string } }).value.sourceId));
+    expect(src.url).toBe("https://www.cbsnews.com/news/example/");
   });
 
   it("requires a neutral summary and a case link for case-specific coverage", () => {
@@ -256,5 +336,52 @@ describe("form validation", () => {
     });
     expect(collegeSchema.safeParse({ slug: "Cornell University", name: "Cornell" }).success).toBe(false);
     expect(collegeSchema.safeParse({ slug: "c", name: "C", enrollment: "about 20k" }).success).toBe(false);
+  });
+});
+
+describe("inbox pagination", () => {
+  let pdb: Database;
+  let pclose: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db: pdb, close: pclose } = await createTestDb());
+    const college = await fixtures(pdb).college();
+    await pdb.insert(s.candidateItems).values(
+      Array.from({ length: 27 }, (_, i) => ({
+        url: `https://news.example/p${i}`,
+        title: `Item ${i}`,
+        collegeId: college.id,
+        // Item 0 is undated; the rest are one day apart, Item 26 newest.
+        publishedAt: i === 0 ? null : new Date(Date.UTC(2026, 0, 1 + i)),
+      })),
+    );
+    await pdb.insert(s.candidateItems).values({ url: "https://news.example/dismissed", title: "Gone", status: "dismissed" });
+  });
+  afterAll(() => pclose());
+
+  it("returns pages newest first, undated last, with totals", async () => {
+    const first = await listCandidates(pdb, "new", 1, 10);
+    expect(first).toMatchObject({ total: 27, page: 1, pageCount: 3, pageSize: 10 });
+    expect(first.items.map((x) => x.title)).toEqual(Array.from({ length: 10 }, (_, i) => `Item ${26 - i}`));
+
+    const last = await listCandidates(pdb, "new", 3, 10);
+    expect(last.items.map((x) => x.title)).toEqual(["Item 6", "Item 5", "Item 4", "Item 3", "Item 2", "Item 1", "Item 0"]);
+  });
+
+  it("never repeats or skips an item across pages", async () => {
+    const pages = await Promise.all([1, 2, 3].map((p) => listCandidates(pdb, "new", p, 10)));
+    const ids = pages.flatMap((p) => p.items.map((x) => x.id));
+    expect(ids).toHaveLength(27);
+    expect(new Set(ids).size).toBe(27);
+  });
+
+  it("clamps out-of-range and invalid page numbers", async () => {
+    expect((await listCandidates(pdb, "new", 99, 10)).page).toBe(3);
+    expect((await listCandidates(pdb, "new", 0, 10)).page).toBe(1);
+    expect((await listCandidates(pdb, "new", Number.NaN, 10)).page).toBe(1);
+    expect(await listCandidates(pdb, "accepted", 5, 10)).toMatchObject({ total: 0, page: 1, pageCount: 1, items: [] });
+  });
+
+  it("counts candidates per status for the tabs", async () => {
+    expect(await candidateCounts(pdb)).toEqual({ new: 27, accepted: 0, dismissed: 1 });
   });
 });

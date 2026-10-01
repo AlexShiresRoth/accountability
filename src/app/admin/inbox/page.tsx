@@ -2,23 +2,56 @@ import Link from "next/link";
 import { ActionForm } from "@/components/admin/action-form";
 import { SelectField, TextArea, TextField } from "@/components/admin/fields";
 import { db } from "@/db";
-import { listCandidates } from "@/lib/admin/inbox";
+import { candidateCounts, listCandidates } from "@/lib/admin/inbox";
+import { Pagination } from "@/components/admin/pagination";
 import { caseOptions, listColleges } from "@/lib/admin/queries";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { candidateStatuses, coverageTopics, type CandidateStatus } from "@/lib/enums";
 import { coverageTopicLabels } from "@/lib/labels";
 import { sourceTypes } from "@/lib/source-types";
+import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
+import { feeds, gdeltQueries } from "@/jobs/discovery/sources";
 import { acceptCandidateAction, dismissCandidateAction } from "../actions";
 
 export const metadata = { title: "Inbox" };
 
 const tabLabels: Record<CandidateStatus, string> = { new: "New", accepted: "Accepted", dismissed: "Dismissed" };
 
+/**
+ * Search results only have to mention the college somewhere in the article; flag headlines that don't.
+ * Campus-feed items are skipped: a campus paper rarely names its own school in a headline.
+ */
+function headlineMissesCollege(title: string | null, slug: string | null, publisher: string | null): string | null {
+  const shortName = gdeltQueries.find((q) => q.collegeSlug === slug)?.shortName;
+  if (!title || !shortName) return null;
+  if (feeds.some((f) => f.collegeSlug === slug && f.publisher === publisher)) return null;
+  return new RegExp(`\\b${shortName}\\b`, "i").test(title) ? null : shortName;
+}
+
 export default async function InboxPage({ searchParams }: PageProps<"/admin/inbox">) {
   await requireResearcherPage();
-  const raw = (await searchParams).status;
+  const query = await searchParams;
+  const raw = query.status;
   const status = (candidateStatuses as readonly string[]).includes(String(raw)) ? (raw as CandidateStatus) : "new";
-  const [items, colleges, cases] = await Promise.all([listCandidates(db, status), listColleges(db), caseOptions(db)]);
+  const requestedPage = Number(Array.isArray(query.page) ? query.page[0] : query.page) || 1;
+  const [result, counts, colleges, cases] = await Promise.all([
+    listCandidates(db, status, requestedPage),
+    candidateCounts(db),
+    listColleges(db),
+    caseOptions(db),
+  ]);
+  const { items } = result;
+  const pager = (
+    <Pagination
+      page={result.page}
+      pageCount={result.pageCount}
+      total={result.total}
+      pageSize={result.pageSize}
+      basePath="/admin/inbox"
+      params={{ status }}
+      label={`${tabLabels[status].toLowerCase()} items`}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -38,12 +71,12 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
             aria-current={st === status ? "page" : undefined}
             className={`-mb-px border-b-2 px-1 pb-2 no-underline ${st === status ? "border-ink text-ink" : "border-transparent text-ink-muted"}`}
           >
-            {tabLabels[st]}
+            {tabLabels[st]} <span className="tabular text-sm text-ink-muted">({counts[st]})</span>
           </Link>
         ))}
       </nav>
 
-      {items.length === 0 && <p className="text-ink-muted">No {tabLabels[status].toLowerCase()} items.</p>}
+      {items.length === 0 ? <p className="text-ink-muted">No {tabLabels[status].toLowerCase()} items.</p> : pager}
 
       <ul className="space-y-6">
         {items.map((c) => (
@@ -57,7 +90,13 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
               <a href={c.url} target="_blank" rel="noopener noreferrer">
                 {c.title ?? c.url}
               </a>
+              {isGoogleNewsUrl(c.url) && <span className="ml-2 text-xs font-normal text-ink-muted">(opens via Google News)</span>}
             </p>
+            {status === "new" && headlineMissesCollege(c.title, c.collegeSlug, c.publisher) && (
+              <p className="mt-1 text-xs font-medium text-caution-ink">
+                Headline doesn&rsquo;t mention {headlineMissesCollege(c.title, c.collegeSlug, c.publisher)}. The article may only mention it in passing.
+              </p>
+            )}
             {c.snippet && <p className="mt-1 text-ink-muted">{c.snippet}</p>}
             {status !== "new" && (
               <p className="mt-2 text-sm text-ink-muted">
@@ -124,6 +163,17 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           defaultValue={c.publishedAt?.toISOString().slice(0, 10)}
                         />
                         <TextField name="title" label="Headline (stored on the source)" required defaultValue={c.title} />
+                        {isGoogleNewsUrl(c.url) && (
+                          <div className="sm:col-span-2">
+                            <TextField
+                              name="articleUrl"
+                              label="Publisher's article URL"
+                              type="url"
+                              required
+                              hint="Found via Google News, whose links don't point at the publisher. Open the article above, then paste the address from your browser."
+                            />
+                          </div>
+                        )}
                       </div>
                       <TextArea
                         name="summary"
@@ -141,6 +191,8 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
           </li>
         ))}
       </ul>
+
+      {items.length > 0 && result.pageCount > 1 && pager}
     </div>
   );
 }

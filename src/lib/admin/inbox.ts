@@ -1,15 +1,31 @@
 import "server-only";
 // Researcher triage of discovered candidates. Accepting creates DRAFT records only; nothing is published here.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
-import type { CandidateStatus } from "@/lib/enums";
+import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
+import { candidateStatuses, type CandidateStatus } from "@/lib/enums";
 import type { MutationResult } from "./records";
 import type { AcceptCandidateInput } from "./validation";
 
-export async function listCandidates(db: Database, status: CandidateStatus = "new") {
-  return db
+export const INBOX_PAGE_SIZE = 25;
+
+export type CandidatePage = Awaited<ReturnType<typeof listCandidates>>;
+
+/**
+ * One page of candidates in a status, newest first (undated last), with a stable tie-break so items
+ * never shift between pages. The requested page is clamped to the last page.
+ */
+export async function listCandidates(db: Database, status: CandidateStatus = "new", page = 1, pageSize = INBOX_PAGE_SIZE) {
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(s.candidateItems)
+    .where(eq(s.candidateItems.status, status));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(1, Math.floor(page) || 1), pageCount);
+
+  const items = await db
     .select({
       id: s.candidateItems.id,
       url: s.candidateItems.url,
@@ -22,12 +38,28 @@ export async function listCandidates(db: Database, status: CandidateStatus = "ne
       reviewedBy: s.candidateItems.reviewedBy,
       collegeId: s.candidateItems.collegeId,
       collegeName: s.colleges.name,
+      collegeSlug: s.colleges.slug,
       acceptedSourceId: s.candidateItems.acceptedSourceId,
     })
     .from(s.candidateItems)
     .leftJoin(s.colleges, eq(s.candidateItems.collegeId, s.colleges.id))
     .where(eq(s.candidateItems.status, status))
-    .orderBy(desc(s.candidateItems.publishedAt), desc(s.candidateItems.createdAt));
+    .orderBy(sql`${s.candidateItems.publishedAt} desc nulls last`, desc(s.candidateItems.createdAt), asc(s.candidateItems.id))
+    .limit(pageSize)
+    .offset((current - 1) * pageSize);
+
+  return { items, total, page: current, pageCount, pageSize };
+}
+
+/** Number of candidates in each status, for the inbox tabs. */
+export async function candidateCounts(db: Database): Promise<Record<CandidateStatus, number>> {
+  const rows = await db
+    .select({ status: s.candidateItems.status, n: sql<number>`count(*)::int` })
+    .from(s.candidateItems)
+    .groupBy(s.candidateItems.status);
+  const counts = Object.fromEntries(candidateStatuses.map((st) => [st, 0])) as Record<CandidateStatus, number>;
+  for (const r of rows) counts[r.status] = r.n;
+  return counts;
 }
 
 export async function dismissCandidate(db: Database, id: string, actor: string): Promise<MutationResult> {
@@ -52,13 +84,22 @@ export async function acceptCandidate(
     if (!candidate) return { ok: false as const, problems: ["Candidate not found."] };
     if (candidate.status !== "new") return { ok: false as const, problems: ["This candidate has already been triaged."] };
 
+    // Provenance: a source must point at the publisher, never at an aggregator link.
+    const url = input.articleUrl ?? candidate.url;
+    if (isGoogleNewsUrl(url)) {
+      return {
+        ok: false as const,
+        problems: ["This item was found via Google News. Open it, then paste the publisher's own article URL."],
+      };
+    }
+
     const [source] = await tx
       .insert(s.sources)
       .values({
         type: input.sourceType,
         publisher: input.publisher,
         title: input.title,
-        url: candidate.url,
+        url,
         publicationDate: input.publicationDate,
         retrievedAt: today,
         status: "draft",

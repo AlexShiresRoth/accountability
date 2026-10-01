@@ -3,14 +3,16 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/action-form";
 import { PublishedEditWarning, SelectField, TextArea, TextField } from "@/components/admin/fields";
 import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
-import { StatusBadge } from "@/components/admin/status";
+import { StatusBadge, statusLabels } from "@/components/admin/status";
+import { StatusSelect } from "@/components/admin/status-select";
 import { db } from "@/db";
 import { getReport, sourceOptions } from "@/lib/admin/queries";
-import { cellKey } from "@/lib/admin/records";
+import { cellKey, unfoundedKey } from "@/lib/admin/records";
 import { requireResearcherPage } from "@/lib/admin/session";
-import { cleryGeographies, offenses, type VerificationStatus } from "@/lib/enums";
+import { cleryGeographies, offenses, verificationStatuses, type CleryGeography, type VerificationStatus } from "@/lib/enums";
 import { geographyLabels, offenseLabels } from "@/lib/labels";
 import {
+  changeStatusAction,
   createFootnoteAction,
   saveGridAction,
   setFootnoteLinksAction,
@@ -103,49 +105,90 @@ export default async function ReportAdmin({ params }: PageProps<"/admin/reports/
         <ActionForm action={saveGridAction.bind(null, report.id)} submitLabel="Save figures">
           <div className="grid gap-6 xl:grid-cols-2">
             {cleryGeographies.map((geo) => (
-              <fieldset key={geo} className="border border-rule p-3">
-                <legend className="px-1 font-medium">{geographyLabels[geo]}</legend>
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr>
-                      <th className="py-1 pr-2 text-left font-medium">Offense</th>
-                      {years.map((y) => (
-                        <th key={y} className="tabular px-1 py-1 text-right font-medium">
-                          {y}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {offenses.map((o) => (
-                      <tr key={o}>
-                        <th scope="row" className="py-1 pr-2 text-left font-normal">
-                          {offenseLabels[o]}
-                        </th>
-                        {years.map((y) => {
-                          const st = byKey.get(cellKey(y, o, geo));
-                          return (
-                            <td key={y} className="px-1 py-1">
-                              <input
-                                name={cellKey(y, o, geo)}
-                                aria-label={`${y} ${offenseLabels[o]}, ${geographyLabels[geo]}`}
-                                defaultValue={st ? (st.count === null ? "-" : String(st.count)) : ""}
-                                inputMode="numeric"
-                                autoComplete="off"
-                                className={`tabular w-full min-w-12 border-2 bg-surface px-1.5 py-1 text-right ${st ? cellStatusStyle[st.status] : "border-rule"}`}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </fieldset>
+              <GridTable key={geo} geo={geo} years={years} byKey={byKey} kind="count" />
             ))}
           </div>
+          <details open={statistics.some((st) => st.unfoundedCount !== null)} className="border border-rule p-3">
+            <summary className="cursor-pointer font-medium">Unfounded reports</summary>
+            <p className="mt-2 max-w-[75ch] text-sm text-ink-muted">
+              Reports that sworn law enforcement determined, after full investigation, to be false or baseless. Reports list
+              these separately and they are not part of the figure above. Leave blank (or &ldquo;-&rdquo;) if the report
+              gives none; enter the figure itself first.
+            </p>
+            <div className="mt-4 grid gap-6 xl:grid-cols-2">
+              {cleryGeographies.map((geo) => (
+                <GridTable key={geo} geo={geo} years={years} byKey={byKey} kind="unfounded" />
+              ))}
+            </div>
+          </details>
         </ActionForm>
       </section>
+
+      {sortedStats.length > 0 && (
+        <section aria-labelledby="figures" className="space-y-3">
+          <h2 id="figures" className="text-xl">
+            Review individual figures
+          </h2>
+          <p className="max-w-[75ch] text-ink-muted">
+            Verifying the report verifies its figures in one step. Use this list to reject, or separately re-verify, a single
+            figure. A figure can only be verified once its report is verified.
+          </p>
+          <details>
+            <summary className="cursor-pointer font-medium">All {sortedStats.length} figures</summary>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-rule-strong">
+                    <th className="py-2 pr-3 font-medium">Figure</th>
+                    <th className="py-2 pr-3 text-right font-medium">Value</th>
+                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 font-medium">Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedStats.map((st) => (
+                    <tr key={st.id} className="border-b border-rule align-top">
+                      <td className="py-2 pr-3">{label(st)}</td>
+                      <td className="tabular py-2 pr-3 text-right">
+                        {st.count === null ? "—" : st.count}
+                        {st.unfoundedCount !== null && <span className="text-ink-muted"> (+{st.unfoundedCount} unfounded)</span>}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <StatusBadge status={st.status} />
+                        {st.reviewedBy && <span className="block text-xs text-ink-muted">by {st.reviewedBy}</span>}
+                      </td>
+                      <td className="py-2">
+                        <ActionForm
+                          action={changeStatusAction.bind(null, "crime_statistic", st.id)}
+                          submitLabel="Update status"
+                          variant="secondary"
+                          className="flex flex-wrap items-start gap-2"
+                        >
+                          <StatusSelect
+                            key={st.status}
+                            compact
+                            label={`New status for ${label(st)}`}
+                            current={st.status}
+                            defaultValue=""
+                            placeholder="Choose…"
+                            options={verificationStatuses.filter((v) => v !== st.status).map((v) => ({ value: v, label: statusLabels[v] }))}
+                          />
+                          <input
+                            name="note"
+                            aria-label={`Note for ${label(st)}`}
+                            placeholder="Note (why)"
+                            className="w-40 border border-rule-strong bg-surface px-2 py-1 text-sm"
+                          />
+                        </ActionForm>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+      )}
 
       <section aria-labelledby="footnotes" className="space-y-4">
         <h2 id="footnotes" className="text-xl">
@@ -222,5 +265,55 @@ function FootnoteFields({ footnote }: { footnote?: { marker: string | null; page
       <TextArea name="originalText" label="Footnote text, verbatim" required rows={3} defaultValue={footnote?.originalText} />
       <TextArea name="summary" label="Plain-language summary (optional)" rows={2} defaultValue={footnote?.summary} hint="Shown as “In plain terms”, alongside the verbatim text." />
     </>
+  );
+}
+
+type Stat = { count: number | null; unfoundedCount: number | null; status: VerificationStatus };
+
+function GridTable({ geo, years, byKey, kind }: { geo: CleryGeography; years: number[]; byKey: Map<string, Stat>; kind: "count" | "unfounded" }) {
+  return (
+    <fieldset className="border border-rule p-3">
+      <legend className="px-1 font-medium">
+        {geographyLabels[geo]}
+        {kind === "unfounded" && <span className="font-normal text-ink-muted">: unfounded</span>}
+      </legend>
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="py-1 pr-2 text-left font-medium">Offense</th>
+            {years.map((y) => (
+              <th key={y} className="tabular px-1 py-1 text-right font-medium">
+                {y}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {offenses.map((o) => (
+            <tr key={o}>
+              <th scope="row" className="py-1 pr-2 text-left font-normal">
+                {offenseLabels[o]}
+              </th>
+              {years.map((y) => {
+                const st = byKey.get(cellKey(y, o, geo));
+                const value = kind === "count" ? (st ? (st.count === null ? "-" : String(st.count)) : "") : (st?.unfoundedCount ?? "");
+                return (
+                  <td key={y} className="px-1 py-1">
+                    <input
+                      name={kind === "count" ? cellKey(y, o, geo) : unfoundedKey(y, o, geo)}
+                      aria-label={`${y} ${offenseLabels[o]}, ${geographyLabels[geo]}${kind === "unfounded" ? ", unfounded" : ""}`}
+                      defaultValue={value}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      className={`tabular w-full min-w-12 border-2 bg-surface px-1.5 py-1 text-right ${st ? cellStatusStyle[st.status] : "border-rule"}`}
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </fieldset>
   );
 }
