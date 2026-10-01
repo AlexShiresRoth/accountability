@@ -55,6 +55,8 @@ const timestamps = () => ({
 const review = () => ({
   status: verificationStatus("status").notNull().default("draft"),
   isDemo: boolean("is_demo").notNull().default(false),
+  /** Researcher who entered the record (self-reported name; shared-password admin). */
+  createdBy: text("created_by"),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   /** Researcher-only notes. Never rendered on public pages. */

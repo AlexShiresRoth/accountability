@@ -13,13 +13,16 @@ legal/status distinctions, researcher usability, public usability, performance, 
 | 3. College profile | Clery statistics explorer, verbatim footnotes, response, resources, timeline, coverage, citations |
 | 4. Case timelines | Legal-status badges, attributed events, superseded events, corrections, outcome-not-located |
 | Discovery job (manual) | `pnpm discover`: feeds + GDELT → `candidate_item` (dev only, never publishes) |
+| 5a. Admin core | Sign-in, dashboard, verification workflow + audit log, inbox, sources, colleges, reports, statistics grid, footnotes, citations |
 
 ## Next
 
-### 5. Admin / research interface
-Login (env password + signed cookie via `proxy.ts`), forms for every entity, statistics entry grid,
-citation attachment, verification workflow + audit log, preview, and the **candidate inbox**
-(dismiss, or accept → draft source + draft coverage).
+### 5b. Admin: remaining records
+Cases and events (with superseded-event links), accountability timeline entries, institutional responses,
+policies, student resources, coverage, corrections, and preview of public pages including unverified records.
+
+Decisions in force (5a): editing a published record returns it to `pending_review` until re-verified;
+self-verification is allowed but "entered by / reviewed by" is shown; only draft or rejected records can be deleted.
 
 ### 6. Learn, SEO
 Scenario content review, sitemap, structured metadata.
