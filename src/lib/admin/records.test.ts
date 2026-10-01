@@ -4,7 +4,7 @@ import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
-import { acceptCandidate, dismissCandidate, listCandidates } from "./inbox";
+import { acceptCandidate, candidateCounts, dismissCandidate, listCandidates } from "./inbox";
 import {
   addCitation,
   cellKey,
@@ -278,7 +278,7 @@ describe("inbox", () => {
     expect(src).toMatchObject({ status: "draft", url: c.url, retrievedAt: "2026-09-30", createdBy: actor, type: "reputable_journalism" });
     const [cov] = await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.id, coverageId));
     expect(cov).toMatchObject({ status: "draft", scope: "institutional", caseId: null });
-    expect((await listCandidates(db, "accepted")).map((x) => x.id)).toContain(c.id);
+    expect((await listCandidates(db, "accepted")).items.map((x) => x.id)).toContain(c.id);
   });
 
   it("cannot accept or dismiss a candidate twice", async () => {
@@ -336,5 +336,52 @@ describe("form validation", () => {
     });
     expect(collegeSchema.safeParse({ slug: "Cornell University", name: "Cornell" }).success).toBe(false);
     expect(collegeSchema.safeParse({ slug: "c", name: "C", enrollment: "about 20k" }).success).toBe(false);
+  });
+});
+
+describe("inbox pagination", () => {
+  let pdb: Database;
+  let pclose: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db: pdb, close: pclose } = await createTestDb());
+    const college = await fixtures(pdb).college();
+    await pdb.insert(s.candidateItems).values(
+      Array.from({ length: 27 }, (_, i) => ({
+        url: `https://news.example/p${i}`,
+        title: `Item ${i}`,
+        collegeId: college.id,
+        // Item 0 is undated; the rest are one day apart, Item 26 newest.
+        publishedAt: i === 0 ? null : new Date(Date.UTC(2026, 0, 1 + i)),
+      })),
+    );
+    await pdb.insert(s.candidateItems).values({ url: "https://news.example/dismissed", title: "Gone", status: "dismissed" });
+  });
+  afterAll(() => pclose());
+
+  it("returns pages newest first, undated last, with totals", async () => {
+    const first = await listCandidates(pdb, "new", 1, 10);
+    expect(first).toMatchObject({ total: 27, page: 1, pageCount: 3, pageSize: 10 });
+    expect(first.items.map((x) => x.title)).toEqual(Array.from({ length: 10 }, (_, i) => `Item ${26 - i}`));
+
+    const last = await listCandidates(pdb, "new", 3, 10);
+    expect(last.items.map((x) => x.title)).toEqual(["Item 6", "Item 5", "Item 4", "Item 3", "Item 2", "Item 1", "Item 0"]);
+  });
+
+  it("never repeats or skips an item across pages", async () => {
+    const pages = await Promise.all([1, 2, 3].map((p) => listCandidates(pdb, "new", p, 10)));
+    const ids = pages.flatMap((p) => p.items.map((x) => x.id));
+    expect(ids).toHaveLength(27);
+    expect(new Set(ids).size).toBe(27);
+  });
+
+  it("clamps out-of-range and invalid page numbers", async () => {
+    expect((await listCandidates(pdb, "new", 99, 10)).page).toBe(3);
+    expect((await listCandidates(pdb, "new", 0, 10)).page).toBe(1);
+    expect((await listCandidates(pdb, "new", Number.NaN, 10)).page).toBe(1);
+    expect(await listCandidates(pdb, "accepted", 5, 10)).toMatchObject({ total: 0, page: 1, pageCount: 1, items: [] });
+  });
+
+  it("counts candidates per status for the tabs", async () => {
+    expect(await candidateCounts(pdb)).toEqual({ new: 27, accepted: 0, dismissed: 1 });
   });
 });
