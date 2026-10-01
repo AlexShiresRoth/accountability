@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   CasesSection,
-  CorrectionsBanner,
   CoverageSection,
   ProfileFacts,
   ResourcesSection,
@@ -11,6 +10,7 @@ import {
   TimelineSection,
 } from "@/components/college/sections";
 import { Container } from "@/components/container";
+import { CorrectionsBanner } from "@/components/corrections";
 import { DemoNotice } from "@/components/notice";
 import { UnderReviewTag } from "@/components/tags";
 import { getCollegeProfile } from "@/lib/public";

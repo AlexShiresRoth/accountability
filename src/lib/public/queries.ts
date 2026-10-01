@@ -23,6 +23,7 @@ import type {
   SourceType,
   VerificationStatus,
 } from "@/lib/enums";
+import { citationKey, type CitationTargetKind } from "@/lib/citations";
 import { resolveStatistics, type ResolvedStatistic, type StatisticInput } from "@/lib/statistics";
 import { inIds, isPublic, isUnderReview, type PublicContext } from "./visibility";
 
@@ -43,19 +44,6 @@ export type PublicSource = {
   isDemo: boolean;
 };
 
-export type CitationTargetKind =
-  | "college"
-  | "cleryReport"
-  | "crimeStatistic"
-  | "statisticFootnote"
-  | "case"
-  | "caseEvent"
-  | "institutionAction"
-  | "institutionalResponse"
-  | "policy"
-  | "studentResource"
-  | "correction";
-
 export type PublicCitation = {
   id: string;
   pinpoint: string | null;
@@ -66,7 +54,7 @@ export type PublicCitation = {
 
 /** Citations keyed by `${kind}:${id}`. Use citationKey() to look them up. */
 export type CitationIndex = Record<string, PublicCitation[]>;
-export const citationKey = (kind: CitationTargetKind, id: string) => `${kind}:${id}`;
+export { citationKey, type CitationTargetKind };
 
 type Flags = { underReview: boolean; isDemo: boolean };
 
