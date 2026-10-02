@@ -2,12 +2,12 @@ import "server-only";
 // Admin mutations. Server actions stay thin: check the session, validate input, call these.
 // Rule: any content change to a published record calls markEdited(), which unpublishes it until re-verified.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { cleryGeographies, offenses, PUBLIC_STATUSES, type CleryGeography, type Offense } from "@/lib/enums";
 import type { CollegeInput, CitationInput, FootnoteInput, ReportInput, SourceInput } from "./validation";
-import { enforceStillValid, markEdited, reviewTables, type ReviewTableKey } from "./workflow";
+import { enforceStillValid, markEdited, markEditedMany, reviewTables, type ReviewTableKey } from "./workflow";
 
 export type MutationResult<T = undefined> =
   | { ok: true; value: T; unpublished?: boolean; unchanged?: boolean }
@@ -168,34 +168,51 @@ export async function saveStatisticsGrid(db: Database, reportId: string, entries
     .map((r) => `${describeCell(r.calendarYear, r.offense, r.geography)} is published and can't be cleared. Enter "-" or reject it instead.`);
   if (problems.length) return fail(...problems);
 
-  const summary: GridSaveSummary = { created: 0, updated: 0, deleted: 0, unpublished: 0 };
+  // Work out every change first, then apply each kind in a single statement (a few queries in total,
+  // instead of several round trips per figure).
+  const inserts: (typeof s.crimeStatistics.$inferInsert)[] = [];
+  const updates: { id: string; count: number | null; unfounded: number | null }[] = [];
+  const deletes: string[] = [];
+  for (const e of entries) {
+    const row = byKey.get(cellKey(e.year, e.offense, e.geography));
+    if (e.value === undefined) {
+      if (row) deletes.push(row.id);
+    } else if (!row) {
+      inserts.push({
+        cleryReportId: reportId,
+        calendarYear: e.year,
+        offense: e.offense,
+        geography: e.geography,
+        count: e.value,
+        unfoundedCount: e.unfounded ?? null,
+        createdBy: actor,
+      });
+    } else {
+      const unfounded = e.unfounded === undefined ? row.unfoundedCount : e.unfounded;
+      if (row.count !== e.value || row.unfoundedCount !== unfounded) updates.push({ id: row.id, count: e.value, unfounded });
+    }
+  }
+
+  const summary: GridSaveSummary = { created: inserts.length, updated: updates.length, deleted: deletes.length, unpublished: 0 };
   await db.transaction(async (tx) => {
     const t = tx as unknown as Database;
-    for (const e of entries) {
-      const row = byKey.get(cellKey(e.year, e.offense, e.geography));
-      if (e.value === undefined) {
-        if (row) {
-          await t.delete(s.crimeStatistics).where(eq(s.crimeStatistics.id, row.id));
-          summary.deleted++;
-        }
-      } else if (!row) {
-        await t.insert(s.crimeStatistics).values({
-          cleryReportId: reportId,
-          calendarYear: e.year,
-          offense: e.offense,
-          geography: e.geography,
-          count: e.value,
-          unfoundedCount: e.unfounded ?? null,
-          createdBy: actor,
-        });
-        summary.created++;
-      } else {
-        const unfounded = e.unfounded === undefined ? row.unfoundedCount : e.unfounded;
-        if (row.count === e.value && row.unfoundedCount === unfounded) continue;
-        await t.update(s.crimeStatistics).set({ count: e.value, unfoundedCount: unfounded }).where(eq(s.crimeStatistics.id, row.id));
-        summary.updated++;
-        if (await markEdited(t, "crime_statistic", row.id, actor)) summary.unpublished++;
-      }
+    if (deletes.length) await t.delete(s.crimeStatistics).where(inArray(s.crimeStatistics.id, deletes));
+    if (inserts.length) await t.insert(s.crimeStatistics).values(inserts);
+    if (updates.length) {
+      const values = sql.join(
+        updates.map((u) => sql`(${u.id}::uuid, ${u.count}::int, ${u.unfounded}::int)`),
+        sql`, `,
+      );
+      await t.execute(
+        sql`update ${s.crimeStatistics} as c set count = v.count, unfounded_count = v.unfounded, updated_at = now()
+            from (values ${values}) as v(id, count, unfounded) where c.id = v.id`,
+      );
+      summary.unpublished = await markEditedMany(
+        t,
+        "crime_statistic",
+        updates.map((u) => u.id),
+        actor,
+      );
     }
   });
   return ok(summary);

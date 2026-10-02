@@ -48,8 +48,12 @@ Setup, architecture, editorial principles, and how verified data is added.
 
 ## Research backlog
 
-- [ ] Cornell Annual Security Report: enter as `pending_review` (source + archived copy, statistics and
-      footnotes verbatim with page references) for human verification through the admin.
+- [x] Cornell Annual Security Reports 2025 and 2026 (Ithaca campus) transcribed in `research/cornell-university.ts`
+      and imported as `pending_review` (`pnpm import-research cornell-university`).
+- [ ] Human verification of the Cornell transcription against the PDFs (page 6 of each report), then verify the
+      college record to publish the profile.
+- [ ] Multi-campus institutions: Cornell publishes separate reports for Ithaca, Cornell Tech, and Weill Cornell Medicine,
+      but the schema allows one report per college per year. Decide whether to add a campus dimension.
 - [ ] Discovery gaps: Cornell Chronicle, statements.cornell.edu, The Harvard Crimson, Columbia Daily
       Spectator, Columbia News (see `src/jobs/discovery/sources.ts`).
 - [ ] Cornell candidates from the first discovery run (developing Chi Phi case): triage in the inbox and

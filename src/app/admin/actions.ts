@@ -202,8 +202,10 @@ export async function saveGridAction(reportId: string, _prev: FormState, form: F
   if (errors.length) return { problems: errors };
   const result = await saveStatisticsGrid(db, reportId, entries, name);
   if (!result.ok) return { problems: result.problems };
-  refreshPublic();
   const { created, updated, deleted, unpublished } = result.value;
+  // Nothing changed: skip the cache refresh, which would re-render this page for no reason.
+  if (created + updated + deleted === 0) return { ok: true, message: "No changes to save." };
+  refreshPublic();
   const parts = [`${created} added`, `${updated} changed`, `${deleted} removed`];
   return {
     ok: true,

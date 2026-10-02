@@ -72,7 +72,32 @@ export async function verificationProblems(db: Database, key: ReviewTableKey, id
   }
 }
 
-async function writeStatus(
+/** Sets one status on many records of a table and logs each change: two queries regardless of count. */
+async function writeStatuses(
+  db: Database,
+  key: ReviewTableKey,
+  rows: { id: string; from: VerificationStatus }[],
+  to: VerificationStatus,
+  actor: string,
+  note: string | null,
+) {
+  if (!rows.length) return;
+  const t = reviewTables[key].table as Reviewed;
+  const reviewed = to === "verified" || to === "rejected" || to === "needs_update";
+  await db.execute(
+    sql`update ${t} set status = ${to}, reviewed_by = ${reviewed ? actor : null}, reviewed_at = ${
+      reviewed ? new Date().toISOString() : null
+    }, updated_at = now() where id in (${sql.join(
+      rows.map((r) => sql`${r.id}`),
+      sql`, `,
+    )})`,
+  );
+  await db
+    .insert(s.verificationLog)
+    .values(rows.map((r) => ({ tableName: key, recordId: r.id, fromStatus: r.from, toStatus: to, actor, note })));
+}
+
+function writeStatus(
   db: Database,
   key: ReviewTableKey,
   id: string,
@@ -81,14 +106,7 @@ async function writeStatus(
   actor: string,
   note: string | null,
 ) {
-  const t = reviewTables[key].table as Reviewed;
-  const reviewed = to === "verified" || to === "rejected" || to === "needs_update";
-  await db.execute(
-    sql`update ${t} set status = ${to}, reviewed_by = ${reviewed ? actor : null}, reviewed_at = ${
-      reviewed ? new Date().toISOString() : null
-    }, updated_at = now() where id = ${id}`,
-  );
-  await db.insert(s.verificationLog).values({ tableName: key, recordId: id, fromStatus: from, toStatus: to, actor, note });
+  return writeStatuses(db, key, [{ id, from }], to, actor, note);
 }
 
 export async function changeStatus(
@@ -120,6 +138,25 @@ export async function markEdited(db: Database, key: ReviewTableKey, id: string, 
   return true;
 }
 
+/** Batch form of markEdited for many records of one table. Returns how many were unpublished. */
+export async function markEditedMany(db: Database, key: ReviewTableKey, ids: string[], actor: string): Promise<number> {
+  if (!ids.length) return 0;
+  const t = reviewTables[key].table as Reviewed;
+  const rows = (await db
+    .select({ id: t.id, status: t.status })
+    .from(t)
+    .where(and(inArray(t.id, ids), inArray(t.status, [...PUBLIC_STATUSES])))) as { id: string; status: VerificationStatus }[];
+  await writeStatuses(
+    db,
+    key,
+    rows.map((r) => ({ id: r.id, from: r.status })),
+    "pending_review",
+    actor,
+    "Edited after publication; re-verification required.",
+  );
+  return rows.length;
+}
+
 /** Call after removing evidence (e.g. a citation). Unpublishes the record if it no longer meets the rules. */
 export async function enforceStillValid(db: Database, key: ReviewTableKey, id: string, actor: string): Promise<boolean> {
   const status = await getStatus(db, key, id);
@@ -135,25 +172,28 @@ export async function verifyReportWithContents(
   db: Database,
   { reportId, actor, note = null }: { reportId: string; actor: string; note?: string | null },
 ): Promise<WorkflowResult & { verified?: number }> {
-  const status = await getStatus(db, "clery_report", reportId);
-  if (!status) return { ok: false, problems: ["Report not found."] };
-  if (status !== "verified") {
-    const result = await changeStatus(db, { key: "clery_report", id: reportId, to: "verified", actor, note });
-    if (!result.ok) return result;
-  }
-  const pending: VerificationStatus[] = ["draft", "pending_review"];
-  const stats = await db
-    .select({ id: s.crimeStatistics.id, status: s.crimeStatistics.status })
-    .from(s.crimeStatistics)
-    .where(and(eq(s.crimeStatistics.cleryReportId, reportId), inArray(s.crimeStatistics.status, pending)));
-  const notes = await db
-    .select({ id: s.statisticFootnotes.id, status: s.statisticFootnotes.status })
-    .from(s.statisticFootnotes)
-    .where(and(eq(s.statisticFootnotes.cleryReportId, reportId), inArray(s.statisticFootnotes.status, pending)));
+  return db.transaction(async (tx) => {
+    const t = tx as unknown as Database;
+    const status = await getStatus(t, "clery_report", reportId);
+    if (!status) return { ok: false as const, problems: ["Report not found."] };
+    if (status !== "verified") {
+      const result = await changeStatus(t, { key: "clery_report", id: reportId, to: "verified", actor, note });
+      if (!result.ok) return result;
+    }
+    const pending: VerificationStatus[] = ["draft", "pending_review"];
+    const stats = await t
+      .select({ id: s.crimeStatistics.id, from: s.crimeStatistics.status })
+      .from(s.crimeStatistics)
+      .where(and(eq(s.crimeStatistics.cleryReportId, reportId), inArray(s.crimeStatistics.status, pending)));
+    const notes = await t
+      .select({ id: s.statisticFootnotes.id, from: s.statisticFootnotes.status })
+      .from(s.statisticFootnotes)
+      .where(and(eq(s.statisticFootnotes.cleryReportId, reportId), inArray(s.statisticFootnotes.status, pending)));
 
-  for (const st of stats) await writeStatus(db, "crime_statistic", st.id, st.status, "verified", actor, note ?? "Verified with report.");
-  for (const f of notes) await writeStatus(db, "statistic_footnote", f.id, f.status, "verified", actor, note ?? "Verified with report.");
-  return { ok: true, verified: stats.length + notes.length };
+    await writeStatuses(t, "crime_statistic", stats, "verified", actor, note ?? "Verified with report.");
+    await writeStatuses(t, "statistic_footnote", notes, "verified", actor, note ?? "Verified with report.");
+    return { ok: true as const, verified: stats.length + notes.length };
+  });
 }
 
 export async function statusHistory(db: Database, key: ReviewTableKey, id: string) {
