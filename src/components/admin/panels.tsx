@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { addCitationAction, changeStatusAction, deleteRecordAction, removeCitationAction } from "@/app/admin/actions";
 import { db } from "@/db";
 import { citationsFor, sourceOptions } from "@/lib/admin/queries";
@@ -15,6 +16,9 @@ type Reviewable = {
   reviewedBy: string | null;
   reviewedAt: Date | null;
 };
+
+// Several citation panels render on one page; load the source list once per request.
+const cachedSourceOptions = cache(() => sourceOptions(db));
 
 const when = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
@@ -78,7 +82,7 @@ export async function StatusPanel({ recordKey, record, extra }: { recordKey: Rev
 export async function CitationsPanel({ recordKey, recordId }: { recordKey: ReviewTableKey; recordId: string }) {
   const column = reviewTables[recordKey].citation;
   if (!column) return null;
-  const [cites, sources] = await Promise.all([citationsFor(db, column, recordId), sourceOptions(db)]);
+  const [cites, sources] = await Promise.all([citationsFor(db, column, recordId), cachedSourceOptions()]);
 
   return (
     <section aria-label="Citations" className="space-y-4 border border-rule p-4">

@@ -116,16 +116,15 @@ export async function getReport(db: Database, id: string) {
     .innerJoin(s.sources, eq(s.cleryReports.sourceId, s.sources.id))
     .where(eq(s.cleryReports.id, id));
   if (!row) return null;
-  const statistics = await db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, id));
-  const footnotes = await db
-    .select()
-    .from(s.statisticFootnotes)
-    .where(eq(s.statisticFootnotes.cleryReportId, id))
-    .orderBy(asc(s.statisticFootnotes.createdAt));
-  const links = await db
-    .select({ footnoteId: s.statisticFootnoteLinks.footnoteId, statisticId: s.statisticFootnoteLinks.crimeStatisticId })
-    .from(s.statisticFootnoteLinks)
-    .where(eq(s.statisticFootnoteLinks.cleryReportId, id));
+  // Independent reads: run them together rather than one round trip after another.
+  const [statistics, footnotes, links] = await Promise.all([
+    db.select().from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, id)),
+    db.select().from(s.statisticFootnotes).where(eq(s.statisticFootnotes.cleryReportId, id)).orderBy(asc(s.statisticFootnotes.createdAt)),
+    db
+      .select({ footnoteId: s.statisticFootnoteLinks.footnoteId, statisticId: s.statisticFootnoteLinks.crimeStatisticId })
+      .from(s.statisticFootnoteLinks)
+      .where(eq(s.statisticFootnoteLinks.cleryReportId, id)),
+  ]);
   return { ...row, statistics, footnotes, links };
 }
 
