@@ -1,6 +1,7 @@
 import type { PublicCitation, PublicSource } from "@/lib/public";
 import { sourceTypes } from "@/lib/source-types";
 import { formatDate } from "@/lib/dates";
+import { Linkify } from "./linkify";
 
 // Citations sit inside running text (<p>, <li>, <dd>), so everything here must be phrasing content:
 // only <span>, <a>, <button>, <q>. Block elements inside a <p> are invalid HTML and break hydration.
@@ -44,7 +45,9 @@ export function Cite({ id, citations }: { id: string; citations: PublicCitation[
               {c.claim && <span className="block text-ink-muted">Supports: {c.claim}</span>}
               {c.pinpoint && <span className="block text-ink-muted">Location in source: {c.pinpoint}</span>}
               {c.excerpt && (
-                <q className="block border-l-2 border-rule-strong pl-3 italic text-ink-muted">{c.excerpt}</q>
+                <q className="block border-l-2 border-rule-strong pl-3 italic text-ink-muted">
+                  <Linkify text={c.excerpt} />
+                </q>
               )}
             </span>
           ))}
@@ -79,7 +82,11 @@ export function SourceDetails({ source }: { source: PublicSource }) {
         )}
         {source.retrievedAt && <span className="text-ink-muted">Retrieved {formatDate(source.retrievedAt)}</span>}
       </span>
-      {source.notes && <span className="block text-ink-muted">{source.notes}</span>}
+      {source.notes && (
+        <span className="block text-ink-muted">
+          <Linkify text={source.notes} />
+        </span>
+      )}
     </span>
   );
 }
