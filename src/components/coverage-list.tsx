@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UnderReviewTag } from "@/components/tags";
+import { StatusTags } from "@/components/tags";
 import { formatDate } from "@/lib/dates";
 import { coverageTopicLabels } from "@/lib/labels";
 import type { PublicCoverage } from "@/lib/public";
@@ -16,7 +16,7 @@ export function CoverageList({ coverage, showCaseLinks = true }: { coverage: Pub
           </p>
           <div>
             <p>
-              {c.summary} {c.underReview && <UnderReviewTag />}
+              {c.summary} <StatusTags item={c} />
             </p>
             <p className="mt-1 flex flex-wrap gap-x-4 text-[0.95rem]">
               {c.source.url && (

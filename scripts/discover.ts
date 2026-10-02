@@ -3,7 +3,7 @@
 // Development database only until the scheduled job is deployed (step 7).
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { createPgClient } from "../src/db/client";
 import * as s from "../src/db/schema";
 import { resolveDatabaseUrl } from "../src/db/target";
 import type { Database } from "../src/db/types";
@@ -19,7 +19,7 @@ async function main() {
   const gdelt = !process.argv.includes("--no-gdelt");
   console.log(`Discovery → development database (${variable}), GDELT ${gdelt ? timespan : "off"}, Google News ${days}d\n`);
 
-  const client = postgres(url, { prepare: false, max: 1 });
+  const client = createPgClient(url, { max: 1 });
   const db = drizzle(client, { schema: s }) as unknown as Database;
   try {
     const result = await runDiscovery({ db, gdeltTimespan: timespan, googleNewsDays: days, sources: { gdelt } });

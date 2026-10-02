@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/action-form";
 import { CollegeFields } from "@/components/admin/college-fields";
 import { PublishedEditWarning, SelectField, TextField } from "@/components/admin/fields";
+import { CollegeRecordsSection } from "@/components/admin/college-records";
 import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
 import { StatusBadge } from "@/components/admin/status";
 import { db } from "@/db";
@@ -27,9 +28,9 @@ export default async function CollegeAdmin({ params }: PageProps<"/admin/college
           <Link href="/admin/colleges">Colleges</Link> /
         </p>
         <h1 className="text-2xl">{college.name}</h1>
-        <p className="mt-1 text-sm">
+        <p className="mt-1 flex flex-wrap gap-x-4 text-sm">
+          <Link href={`/admin/preview/college/${college.id}`}>Preview profile (including unverified)</Link>
           <Link href={`/college/${college.slug}`}>Public profile</Link>
-          <span className="text-ink-muted"> (only shows once verified)</span>
         </p>
       </div>
 
@@ -85,6 +86,8 @@ export default async function CollegeAdmin({ params }: PageProps<"/admin/college
           </div>
         </details>
       </section>
+
+      <CollegeRecordsSection collegeId={college.id} />
     </div>
   );
 }

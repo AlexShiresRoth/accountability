@@ -19,6 +19,7 @@ const event = (o: Partial<PublicCaseEvent> = {}): PublicCaseEvent => ({
   supersedesEventId: null,
   supersededByEventId: null,
   underReview: false,
+  unverified: false,
   isDemo: false,
   ...o,
 });
@@ -39,6 +40,7 @@ const citation: PublicCitation = {
     archivedUrl: null,
     notes: null,
     isDemo: false,
+    unverified: false,
   },
 };
 

@@ -63,6 +63,7 @@ export function SourceDetails({ source }: { source: PublicSource }) {
       <span className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
         {sourceTypes[source.type].label}
         {source.isDemo && " · Demo fixture"}
+        {source.unverified && " · Not yet verified (preview)"}
       </span>
       <span className="block font-medium">{source.title}</span>
       <span className="block text-ink-muted">

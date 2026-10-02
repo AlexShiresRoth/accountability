@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { cornellInstitutional } from "../../../research/cornell-institutional";
 import { cornellAsr } from "../../../research/cornell-university";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
@@ -77,5 +78,45 @@ describe("importResearchBundle", () => {
     expect(profile.statistics.every((x) => x.unfoundedCount === null)).toBe(true);
     expect(profile.footnotes.map((f) => f.page).sort()).toEqual(["p. 5", "p. 5", "p. 6", "p. 6"]);
     expect(profile.college.enrollmentNote).toMatch(/^Approximately 26,000/);
+  });
+});
+
+describe("Cornell institutional record bundle", () => {
+  it("validates, and every record carries at least one citation", () => {
+    expect(validateBundle(cornellInstitutional)).toEqual([]);
+    expect(cornellInstitutional.records!.every((r) => r.citations.length > 0)).toBe(true);
+  });
+
+  it("imports records as pending review with their citations, reusing the existing source", async () => {
+    const sourcesBefore = (await db.select().from(s.sources)).length;
+    const { queued } = await importResearchBundle(db, cornellInstitutional, actor);
+    expect(await db.select().from(s.sources)).toHaveLength(sourcesBefore);
+    expect(queued.filter((q) => q.key !== "college").map((q) => q.key).sort()).toEqual(
+      [...Array(7).fill("institutional_response"), "policy", ...Array(11).fill("student_resource")].sort(),
+    );
+    for (const table of [s.institutionalResponses, s.policies, s.studentResources]) {
+      const rows = (await db.select({ status: table.status }).from(table)) as { status: string }[];
+      expect(rows.every((r) => r.status === "pending_review")).toBe(true);
+    }
+    const [notLocated] = await db.select().from(s.institutionalResponses).where(eq(s.institutionalResponses.findingKind, "not_located"));
+    expect(notLocated.topic).toBe("outcome_information");
+    const cites = await db.select().from(s.citations).where(eq(s.citations.institutionalResponseId, notLocated.id));
+    expect(cites.map((c) => c.pinpoint).sort()).toEqual(["p. 22", "p. 6"]);
+
+    // Several citations to the same page with different excerpts are all kept.
+    const total = await db.select().from(s.citations);
+    const expected = cornellAsr.college.citations!.length + cornellAsr.reports.flatMap((r) => r.citations ?? []).length +
+      cornellInstitutional.records!.reduce((n, r) => n + r.citations.length, 0);
+    expect(total).toHaveLength(expected);
+  });
+
+  it("is safe to re-run", async () => {
+    const before = (await db.select().from(s.studentResources)).length;
+    const { queued } = await importResearchBundle(db, cornellInstitutional, actor);
+    expect(queued).toHaveLength(1); // only the college, which is not moved because it is already verified
+    expect(await db.select().from(s.studentResources)).toHaveLength(before);
+    const citesAfter = await db.select().from(s.citations);
+    await importResearchBundle(db, cornellInstitutional, actor);
+    expect(await db.select().from(s.citations)).toHaveLength(citesAfter.length);
   });
 });

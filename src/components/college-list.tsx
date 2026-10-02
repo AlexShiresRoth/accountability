@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PublicCollegeSummary } from "@/lib/public";
-import { UnderReviewTag } from "./tags";
+import { StatusTags } from "./tags";
 
 export function CollegeList({ colleges, inPreparation = [] }: { colleges: PublicCollegeSummary[]; inPreparation?: string[] }) {
   return (
@@ -13,7 +13,7 @@ export function CollegeList({ colleges, inPreparation = [] }: { colleges: Public
           >
             <span className="font-serif text-lg underline decoration-rule-strong underline-offset-4">
               {c.name} {c.isDemo && <span className="font-sans text-xs text-demo-ink">(demo fixture)</span>}{" "}
-              {c.underReview && <UnderReviewTag />}
+              <StatusTags item={c} />
             </span>
             <span className="text-sm text-ink-muted">{[c.city, c.state].filter(Boolean).join(", ")}</span>
           </Link>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Cite } from "@/components/cite";
 import { DataQualityNote, DataQualityNotes } from "@/components/data-quality-note";
-import { SectionHeading, UnderReviewTag } from "@/components/tags";
+import { SectionHeading, StatusTags } from "@/components/tags";
 import { formatDate } from "@/lib/dates";
 import { confidentialityLevels, responseTopics } from "@/lib/enums";
 import {
@@ -107,7 +107,7 @@ export function StatisticsSection({ profile: p }: P) {
                       {n.markers.length > 0 && (
                         <span className="text-ink-muted"> (marked {n.markers.map((m) => `“${m}”`).join(", ")})</span>
                       )}{" "}
-                      {n.underReview && <UnderReviewTag />}
+                      <StatusTags item={n} />
                     </p>
                     <blockquote className="mt-1">
                       &ldquo;<Linkify text={n.originalText} />&rdquo;
@@ -134,7 +134,7 @@ export function StatisticsSection({ profile: p }: P) {
                 const reportCitation: PublicCitation = { id: `report-${r.id}`, pinpoint: null, excerpt: null, claim: null, source: r.source };
                 return (
                   <li key={r.id}>
-                    {r.title} ({r.reportYear}) {r.underReview && <UnderReviewTag />}
+                    {r.title} ({r.reportYear}) <StatusTags item={r} />
                     <Cite id={`report-${r.id}`} citations={[reportCitation, ...(cites(p, "cleryReport", r.id) ?? [])]} />
                   </li>
                 );
@@ -185,12 +185,8 @@ export function ResponseSection({ profile: p }: P) {
                   items.map((r) => (
                     <p key={r.id} className={r.findingKind === "not_located" ? "text-ink-muted italic" : ""}>
                       {r.summary}
-                      {r.underReview && (
-                        <>
-                          {" "}
-                          <UnderReviewTag />
-                        </>
-                      )}
+                      {(r.underReview || r.unverified) && " "}
+                      <StatusTags item={r} />
                       <Cite id={`response-${r.id}`} citations={cites(p, "institutionalResponse", r.id)} />
                     </p>
                   ))
@@ -208,7 +204,7 @@ export function ResponseSection({ profile: p }: P) {
             {p.policies.map((policy) => (
               <li key={policy.id}>
                 <p className="font-medium">
-                  {policy.title} {policy.underReview && <UnderReviewTag />}
+                  {policy.title} <StatusTags item={policy} />
                   <Cite id={`policy-${policy.id}`} citations={cites(p, "policy", policy.id)} />
                 </p>
                 <p className="text-sm text-ink-muted">
@@ -280,7 +276,7 @@ function ResourceLine({ r, p }: { r: CollegeProfile["resources"][number]; p: Col
   return (
     <div className="space-y-1">
       <p className="font-medium">
-        {r.name} {r.underReview && <UnderReviewTag />}
+        {r.name} <StatusTags item={r} />
         <Cite id={`resource-${r.id}`} citations={cites(p, "studentResource", r.id)} />
       </p>
       <p className="text-sm text-ink-muted">
@@ -322,7 +318,7 @@ export function TimelineSection({ profile: p }: P) {
               <span aria-hidden className="absolute -left-[1.84rem] top-2 size-2.5 rounded-full bg-ink ring-4 ring-paper" />
               <p className="text-sm text-ink-muted">
                 <time dateTime={a.actionDate}>{formatDate(a.actionDate, a.datePrecision)}</time> · {actionTypeLabels[a.actionType]}{" "}
-                {a.underReview && <UnderReviewTag />}
+                <StatusTags item={a} />
               </p>
               <h3 className="mt-1 font-sans text-lg font-semibold">{a.title}</h3>
               <p className="mt-1 max-w-[62ch]">
@@ -357,7 +353,7 @@ export function CasesSection({ profile: p }: P) {
               <Link href={`/case/${c.slug}`} className="font-serif text-lg font-semibold">
                 {c.title}
               </Link>{" "}
-              {c.underReview && <UnderReviewTag />}
+              <StatusTags item={c} />
               <p className="mt-1 max-w-[62ch] text-ink-muted">{c.summary}</p>
             </li>
           ))}

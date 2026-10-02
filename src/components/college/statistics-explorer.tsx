@@ -309,6 +309,11 @@ function StatisticsTable({
                           ◦
                         </span>
                       )}
+                      {c?.unverified && (
+                        <span className="ml-1 text-[0.75em] text-demo-ink" title="Preview: not yet verified">
+                          unverified
+                        </span>
+                      )}
                     </td>
                   );
                 })}

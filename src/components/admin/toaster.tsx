@@ -19,6 +19,7 @@ const notices: Record<string, Omit<Toast, "id">> = {
   "report-created": { kind: "success", title: "Report created", detail: "Saved as a draft. Enter its figures below." },
   "candidate-accepted": { kind: "success", title: "Accepted as draft", detail: "A draft source and coverage entry were created." },
   deleted: { kind: "success", title: "Deleted" },
+  "record-created": { kind: "success", title: "Created as draft", detail: "Add a citation, then verify it to publish." },
 };
 
 export function Toaster() {

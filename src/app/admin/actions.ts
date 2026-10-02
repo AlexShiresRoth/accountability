@@ -11,6 +11,11 @@ import { acceptCandidate, dismissCandidate } from "@/lib/admin/inbox";
 import {
   addCitation,
   createCollege,
+  createCollegeRecord,
+  isCollegeRecordKey,
+  updateCollegeRecord,
+  type CollegeRecordInput,
+  type CollegeRecordKey,
   createFootnote,
   createReport,
   createSource,
@@ -36,8 +41,14 @@ import {
 } from "@/lib/admin/session-token";
 import {
   acceptCandidateSchema,
+  actionSchema,
   citationSchema,
   collegeSchema,
+  correctionSchema,
+  coverageSchema,
+  policySchema,
+  resourceSchema,
+  responseSchema,
   footnoteSchema,
   formValues,
   problemsOf,
@@ -252,4 +263,41 @@ export async function acceptCandidateAction(id: string, _prev: FormState, form: 
   const result = await acceptCandidate(db, id, parsed.data, name);
   if (!result.ok) return { problems: result.problems };
   redirect(`/admin/sources/${result.value.sourceId}?notice=candidate-accepted&accepted=1`);
+}
+
+// ---------------------------------------------------------------------------
+// Institutional record: timeline entries, responses, policies, resources, coverage, corrections
+// ---------------------------------------------------------------------------
+
+const recordSchemas = {
+  institution_action: actionSchema,
+  institutional_response: responseSchema,
+  policy: policySchema,
+  student_resource: resourceSchema,
+  college_coverage: coverageSchema,
+  correction: correctionSchema,
+} satisfies Record<CollegeRecordKey, unknown>;
+
+function parseRecord<K extends CollegeRecordKey>(key: K, form: FormData) {
+  return recordSchemas[key].safeParse(formValues(form)) as
+    | { success: true; data: CollegeRecordInput[K] }
+    | { success: false; error: Parameters<typeof problemsOf>[0] };
+}
+
+export async function createCollegeRecordAction(key: string, collegeId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  if (!isCollegeRecordKey(key)) return { problems: ["Unknown record type."] };
+  const parsed = parseRecord(key, form);
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  const result = await createCollegeRecord(db, key, collegeId, parsed.data, name);
+  if (!result.ok) return { problems: result.problems };
+  redirect(`/admin/records/${key}/${result.value}?notice=record-created`);
+}
+
+export async function updateCollegeRecordAction(key: string, id: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  if (!isCollegeRecordKey(key)) return { problems: ["Unknown record type."] };
+  const parsed = parseRecord(key, form);
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  return toState(await updateCollegeRecord(db, key, id, parsed.data, name), "Saved.");
 }

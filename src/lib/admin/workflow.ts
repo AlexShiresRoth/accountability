@@ -10,13 +10,19 @@ import { PUBLIC_STATUSES, type VerificationStatus } from "@/lib/enums";
 
 type Reviewed = PgTable & { id: AnyPgColumn; status: AnyPgColumn };
 
-/** Tables managed by the admin. Extended in step 5b (cases, events, institutional record). */
+/** Tables managed by the admin. Cases and case events are added in step 5b-2. */
 export const reviewTables = {
   source: { table: s.sources, label: "Source", citation: null },
   college: { table: s.colleges, label: "College", citation: s.citations.collegeId },
   clery_report: { table: s.cleryReports, label: "Clery report", citation: s.citations.cleryReportId },
   crime_statistic: { table: s.crimeStatistics, label: "Statistic", citation: s.citations.crimeStatisticId },
   statistic_footnote: { table: s.statisticFootnotes, label: "Footnote", citation: s.citations.statisticFootnoteId },
+  institution_action: { table: s.institutionActions, label: "Timeline entry", citation: s.citations.institutionActionId },
+  institutional_response: { table: s.institutionalResponses, label: "Institutional response", citation: s.citations.institutionalResponseId },
+  policy: { table: s.policies, label: "Policy", citation: s.citations.policyId },
+  student_resource: { table: s.studentResources, label: "Student resource", citation: s.citations.studentResourceId },
+  college_coverage: { table: s.collegeCoverage, label: "Coverage", citation: null },
+  correction: { table: s.corrections, label: "Correction", citation: s.citations.correctionId },
 } satisfies Record<string, { table: Reviewed; label: string; citation: AnyPgColumn | null }>;
 
 export type ReviewTableKey = keyof typeof reviewTables;
@@ -58,6 +64,16 @@ export async function verificationProblems(db: Database, key: ReviewTableKey, id
         .innerJoin(s.cleryReports, eq(table.cleryReportId, s.cleryReports.id))
         .where(eq(table.id, id));
       return row?.reportStatus === "verified" ? [] : ["Verify the Clery report first."];
+    }
+    case "college_coverage": {
+      // Coverage is evidenced by the article itself. Case-scoped coverage also stays hidden publicly until
+      // its case is verified (enforced by the public query layer).
+      const [row] = await db
+        .select({ sourceStatus: s.sources.status })
+        .from(s.collegeCoverage)
+        .innerJoin(s.sources, eq(s.collegeCoverage.sourceId, s.sources.id))
+        .where(eq(s.collegeCoverage.id, id));
+      return row?.sourceStatus === "verified" ? [] : ["Verify the article's source record first."];
     }
     default: {
       const column = reviewTables[key].citation;
