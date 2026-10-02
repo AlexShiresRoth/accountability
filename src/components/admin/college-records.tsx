@@ -78,14 +78,14 @@ export async function CollegeRecordsSection({ collegeId }: { collegeId: string }
   ];
 
   return (
-    <section aria-labelledby="institutional" className="space-y-10">
+    <section aria-labelledby="profile-content" className="space-y-10">
       <div>
-        <h2 id="institutional" className="text-xl">
-          Institutional record
+        <h2 id="profile-content" className="text-xl">
+          Profile content: responses, policies, resources, timeline, coverage
         </h2>
         <p className="mt-1 max-w-[75ch] text-ink-muted">
-          Everything on the profile beyond statistics. Records are created as drafts; add a citation, then verify each to
-          publish it.
+          Everything on the public profile apart from the statistics above, grouped as it appears on the profile. Records
+          are created as drafts; add a citation, then verify each one to publish it.
         </p>
       </div>
       {groups.map((g) => (
