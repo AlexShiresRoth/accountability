@@ -18,6 +18,7 @@ import type { CollegeProfile, PublicCitation } from "@/lib/public";
 import { groupFootnotes } from "@/lib/footnotes";
 import { reportingYears } from "@/lib/statistics";
 import { CoverageList } from "@/components/coverage-list";
+import { Linkify } from "@/components/linkify";
 import { StatisticsExplorer, type FootnoteRef } from "./statistics-explorer";
 
 type P = { profile: CollegeProfile };
@@ -108,8 +109,14 @@ export function StatisticsSection({ profile: p }: P) {
                       )}{" "}
                       {n.underReview && <UnderReviewTag />}
                     </p>
-                    <blockquote className="mt-1">&ldquo;{n.originalText}&rdquo;</blockquote>
-                    {n.summary && <p className="mt-1 text-ink-muted">In plain terms: {n.summary}</p>}
+                    <blockquote className="mt-1">
+                      &ldquo;<Linkify text={n.originalText} />&rdquo;
+                    </blockquote>
+                    {n.summary && (
+                      <p className="mt-1 text-ink-muted">
+                        In plain terms: <Linkify text={n.summary} />
+                      </p>
+                    )}
                     <p className="mt-1 text-sm text-ink-muted">
                       {appliesTo(p, n.ids, n.linked)}
                       <Cite id={n.anchor} citations={n.ids.flatMap((id) => cites(p, "statisticFootnote", id) ?? [])} />

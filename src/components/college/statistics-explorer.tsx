@@ -5,6 +5,7 @@ import type { CleryGeography, Offense } from "@/lib/enums";
 import { cleryGeographies, offenses } from "@/lib/enums";
 import { geographyDescriptions, geographyLabels, leadOffenses, offenseLabels } from "@/lib/labels";
 import type { ResolvedStatistic } from "@/lib/statistics";
+import { Linkify } from "@/components/linkify";
 
 /** One footnote id → its displayed note. Identical notes repeated across reports share a number and anchor. */
 export type FootnoteRef = { id: string; number: number; text: string; anchor: string };
@@ -220,7 +221,7 @@ function OffensePanel({
               <a href={`#${f.anchor}`} className="text-caution-ink">
                 Note {f.number}
               </a>
-              : {f.text}
+              : <Linkify text={f.text} />
             </li>
           ))}
         </ul>
