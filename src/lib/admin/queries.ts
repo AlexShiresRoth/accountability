@@ -2,9 +2,11 @@ import "server-only";
 // Admin reads. Unlike the public layer, these return records in every status.
 
 import { asc, desc, eq, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import type { VerificationStatus } from "@/lib/enums";
+import { collegeRecordTables, type CollegeRecordKey } from "./records";
 import { reviewTables, type ReviewTableKey } from "./workflow";
 
 export type StatusCounts = Record<VerificationStatus, number>;
@@ -56,9 +58,33 @@ export async function dashboard(db: Database) {
       kind: "Statistics",
       href: `/admin/reports/${r.id}`,
     })),
+    ...(await pendingCollegeRecords(db)),
   ];
 
   return { counts, inbox, recent, awaiting };
+}
+
+/** Institutional records awaiting review, labelled for the dashboard. */
+async function pendingCollegeRecords(db: Database) {
+  const pending = (table: { status: AnyPgColumn }) => eq(table.status, "pending_review");
+  const rows = await Promise.all([
+    db.select({ id: s.institutionActions.id, label: s.institutionActions.title, createdBy: s.institutionActions.createdBy }).from(s.institutionActions).where(pending(s.institutionActions)),
+    db.select({ id: s.institutionalResponses.id, label: s.institutionalResponses.topic, createdBy: s.institutionalResponses.createdBy }).from(s.institutionalResponses).where(pending(s.institutionalResponses)),
+    db.select({ id: s.policies.id, label: s.policies.title, createdBy: s.policies.createdBy }).from(s.policies).where(pending(s.policies)),
+    db.select({ id: s.studentResources.id, label: s.studentResources.name, createdBy: s.studentResources.createdBy }).from(s.studentResources).where(pending(s.studentResources)),
+    db.select({ id: s.collegeCoverage.id, label: s.collegeCoverage.summary, createdBy: s.collegeCoverage.createdBy }).from(s.collegeCoverage).where(pending(s.collegeCoverage)),
+    db.select({ id: s.corrections.id, label: s.corrections.description, createdBy: s.corrections.createdBy }).from(s.corrections).where(pending(s.corrections)),
+  ]);
+  const keys = ["institution_action", "institutional_response", "policy", "student_resource", "college_coverage", "correction"] as const;
+  return rows.flatMap((list, i) =>
+    list.map((r) => ({
+      id: r.id,
+      label: String(r.label).replaceAll("_", " ").slice(0, 90),
+      createdBy: r.createdBy,
+      kind: reviewTables[keys[i]].label,
+      href: `/admin/records/${keys[i]}/${r.id}`,
+    })),
+  );
 }
 
 export async function listSources(db: Database) {
@@ -166,4 +192,51 @@ export async function sourceOptions(db: Database) {
 
 export async function caseOptions(db: Database) {
   return db.select({ id: s.cases.id, title: s.cases.title, status: s.cases.status }).from(s.cases).orderBy(asc(s.cases.title));
+}
+
+// ---------------------------------------------------------------------------
+// Institutional record (step 5b-1)
+// ---------------------------------------------------------------------------
+
+/** Every institutional record for a college, in every status, grouped by type. */
+export async function getCollegeRecords(db: Database, collegeId: string) {
+  const [actions, responses, policies, resources, coverage, corrections] = await Promise.all([
+    db.select().from(s.institutionActions).where(eq(s.institutionActions.collegeId, collegeId)).orderBy(desc(s.institutionActions.actionDate)),
+    db.select().from(s.institutionalResponses).where(eq(s.institutionalResponses.collegeId, collegeId)).orderBy(asc(s.institutionalResponses.topic)),
+    db.select().from(s.policies).where(eq(s.policies.collegeId, collegeId)).orderBy(asc(s.policies.title)),
+    db
+      .select()
+      .from(s.studentResources)
+      .where(eq(s.studentResources.collegeId, collegeId))
+      .orderBy(asc(s.studentResources.category), asc(s.studentResources.sortOrder), asc(s.studentResources.name)),
+    db
+      .select({ coverage: s.collegeCoverage, sourceTitle: s.sources.title, publisher: s.sources.publisher, sourceStatus: s.sources.status })
+      .from(s.collegeCoverage)
+      .innerJoin(s.sources, eq(s.collegeCoverage.sourceId, s.sources.id))
+      .where(eq(s.collegeCoverage.collegeId, collegeId))
+      .orderBy(desc(s.collegeCoverage.createdAt)),
+    db.select().from(s.corrections).where(eq(s.corrections.collegeId, collegeId)).orderBy(desc(s.corrections.correctionDate)),
+  ]);
+  return { actions, responses, policies, resources, coverage, corrections };
+}
+
+/** One institutional record with its college, for the record page. */
+export async function getCollegeRecord(db: Database, key: CollegeRecordKey, id: string) {
+  const table = collegeRecordTables[key] as unknown as typeof s.policies;
+  const [record] = (await db.select().from(table).where(eq(table.id, id))) as Record<string, unknown>[];
+  if (!record) return null;
+  const [college] = await db
+    .select({ id: s.colleges.id, name: s.colleges.name, slug: s.colleges.slug })
+    .from(s.colleges)
+    .where(eq(s.colleges.id, record.collegeId as string));
+  return { record, college };
+}
+
+/** Timeline entries a coverage item can be linked to. */
+export async function actionOptions(db: Database, collegeId: string) {
+  return db
+    .select({ id: s.institutionActions.id, title: s.institutionActions.title, actionDate: s.institutionActions.actionDate })
+    .from(s.institutionActions)
+    .where(eq(s.institutionActions.collegeId, collegeId))
+    .orderBy(desc(s.institutionActions.actionDate));
 }

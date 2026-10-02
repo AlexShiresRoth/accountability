@@ -1,7 +1,19 @@
 // Input validation for admin forms. Form values arrive as strings; empty strings become null.
 import { z } from "zod";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
-import { coverageScopes, coverageTopics, sourceTypes, verificationStatuses } from "@/lib/enums";
+import {
+  confidentialityLevels,
+  coverageScopes,
+  coverageTopics,
+  datePrecisions,
+  institutionActionTypes,
+  policyTypes,
+  resourceCategories,
+  responseFindingKinds,
+  responseTopics,
+  sourceTypes,
+  verificationStatuses,
+} from "@/lib/enums";
 
 export function formValues(form: FormData): Record<string, string> {
   const out: Record<string, string> = {};
@@ -134,6 +146,78 @@ export const acceptCandidateSchema = z
     path: ["summary"],
   });
 export type AcceptCandidateInput = z.infer<typeof acceptCandidateSchema>;
+
+// ---------------------------------------------------------------------------
+// Institutional record (step 5b-1)
+// ---------------------------------------------------------------------------
+
+const requiredDate = (label: string) =>
+  isoDate.refine((v) => v !== null, `${label} is required.`).transform((v) => v as string);
+
+const optionalUuid = z
+  .string()
+  .optional()
+  .transform((v) => v?.trim() || null)
+  .refine((v) => v === null || /^[0-9a-f-]{36}$/i.test(v), "Invalid selection.");
+
+export const actionSchema = z.object({
+  actionDate: requiredDate("Date"),
+  datePrecision: z.enum(datePrecisions),
+  actionType: z.enum(institutionActionTypes),
+  title: required("Title", 300),
+  description: required("Description", 3000),
+});
+export type ActionInput = z.infer<typeof actionSchema>;
+
+export const responseSchema = z.object({
+  topic: z.enum(responseTopics),
+  findingKind: z.enum(responseFindingKinds),
+  summary: required("Summary", 3000),
+});
+export type ResponseInput = z.infer<typeof responseSchema>;
+
+export const policySchema = z.object({
+  policyType: z.enum(policyTypes),
+  title: required("Title", 300),
+  summary: optional(3000),
+  effectiveDate: isoDate,
+});
+export type PolicyInput = z.infer<typeof policySchema>;
+
+export const resourceSchema = z.object({
+  category: z.enum(resourceCategories),
+  confidentiality: z.enum(confidentialityLevels),
+  name: required("Name", 300),
+  description: optional(2000),
+  phone: optional(50),
+  url: webUrl,
+  hours: optional(300),
+  available247: z
+    .string()
+    .optional()
+    .transform((v) => (v === "yes" ? true : v === "no" ? false : null)),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+});
+export type ResourceInput = z.infer<typeof resourceSchema>;
+
+export const coverageSchema = z
+  .object({
+    sourceId: uuid("Source"),
+    scope: z.enum(coverageScopes),
+    caseId: optionalUuid,
+    institutionActionId: optionalUuid,
+    topic: z.enum(coverageTopics),
+    summary: required("Summary", 600).min(20, "Write a neutral one-sentence summary (at least 20 characters)."),
+  })
+  .refine((v) => v.scope === "institutional" || v.caseId, { message: "Case-specific coverage must be linked to a case.", path: ["caseId"] })
+  .transform((v) => ({ ...v, caseId: v.scope === "case" ? v.caseId : null }));
+export type CoverageInput = z.infer<typeof coverageSchema>;
+
+export const correctionSchema = z.object({
+  correctionDate: requiredDate("Date"),
+  description: required("Description", 2000),
+});
+export type CorrectionInput = z.infer<typeof correctionSchema>;
 
 /** Flattens zod issues into readable messages. */
 export function problemsOf(error: z.ZodError): string[] {

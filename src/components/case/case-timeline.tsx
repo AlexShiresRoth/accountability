@@ -1,5 +1,5 @@
 import { Cite } from "@/components/cite";
-import { UnderReviewTag } from "@/components/tags";
+import { StatusTags } from "@/components/tags";
 import { caseEventTypeInfo, type EventCategory } from "@/lib/case-events";
 import { formatDate } from "@/lib/dates";
 import { citationKey } from "@/lib/citations";
@@ -39,7 +39,7 @@ export function CaseTimeline({ events, citations }: { events: PublicCaseEvent[];
             <p className="mt-1 text-sm text-ink-muted">{caseEventTypeInfo[e.eventType].meaning}</p>
             {(e.underReview || supersededBy || supersedes) && (
               <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                {e.underReview && <UnderReviewTag />}
+                <StatusTags item={e} />
                 {supersededBy && (
                   <span className="border border-ink px-1.5 py-px font-medium">
                     Updated: see{" "}

@@ -8,7 +8,7 @@ import { Container } from "@/components/container";
 import { CorrectionsBanner } from "@/components/corrections";
 import { CoverageList } from "@/components/coverage-list";
 import { DemoNotice } from "@/components/notice";
-import { SectionHeading, UnderReviewTag } from "@/components/tags";
+import { SectionHeading, StatusTags } from "@/components/tags";
 import { citationKey, getCase } from "@/lib/public";
 
 export const revalidate = 3600;
@@ -51,7 +51,7 @@ export default async function CasePage({ params }: PageProps<"/case/[slug]">) {
           )}
           <p className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-muted">Documented case</p>
           <h1 className="max-w-3xl text-3xl sm:text-[2.6rem]">
-            {c.title} {c.underReview && <UnderReviewTag />}
+            {c.title} <StatusTags item={c} />
           </h1>
           <p className="mt-5 max-w-[62ch] text-lg text-ink-muted">
             {c.summary}

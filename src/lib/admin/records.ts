@@ -6,7 +6,19 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { cleryGeographies, offenses, PUBLIC_STATUSES, type CleryGeography, type Offense } from "@/lib/enums";
-import type { CollegeInput, CitationInput, FootnoteInput, ReportInput, SourceInput } from "./validation";
+import type {
+  ActionInput,
+  CitationInput,
+  CollegeInput,
+  CorrectionInput,
+  CoverageInput,
+  FootnoteInput,
+  PolicyInput,
+  ReportInput,
+  ResourceInput,
+  ResponseInput,
+  SourceInput,
+} from "./validation";
 import { enforceStillValid, markEdited, markEditedMany, reviewTables, type ReviewTableKey } from "./workflow";
 
 export type MutationResult<T = undefined> =
@@ -279,6 +291,11 @@ const citationField = {
   clery_report: "cleryReportId",
   crime_statistic: "crimeStatisticId",
   statistic_footnote: "statisticFootnoteId",
+  institution_action: "institutionActionId",
+  institutional_response: "institutionalResponseId",
+  policy: "policyId",
+  student_resource: "studentResourceId",
+  correction: "correctionId",
 } as const satisfies Partial<Record<ReviewTableKey, keyof typeof s.citations.$inferInsert>>;
 
 export type CitableKey = keyof typeof citationField;
@@ -300,6 +317,82 @@ export async function removeCitation(db: Database, citationId: string, actor: st
   await db.delete(s.citations).where(eq(s.citations.id, citationId));
   if (!target) return ok(undefined);
   return ok(undefined, await enforceStillValid(db, target[0], cite[target[1]]!, actor));
+}
+
+// ---------------------------------------------------------------------------
+// Institutional record: timeline entries, responses, policies, resources, coverage, corrections
+// ---------------------------------------------------------------------------
+
+/** Records that belong to one college and are edited through the same publish rules. */
+export const collegeRecordTables = {
+  institution_action: s.institutionActions,
+  institutional_response: s.institutionalResponses,
+  policy: s.policies,
+  student_resource: s.studentResources,
+  college_coverage: s.collegeCoverage,
+  correction: s.corrections,
+} as const;
+
+export type CollegeRecordKey = keyof typeof collegeRecordTables;
+export const isCollegeRecordKey = (k: string): k is CollegeRecordKey => k in collegeRecordTables;
+
+export type CollegeRecordInput = {
+  institution_action: ActionInput;
+  institutional_response: ResponseInput;
+  policy: PolicyInput;
+  student_resource: ResourceInput;
+  college_coverage: CoverageInput;
+  correction: CorrectionInput;
+};
+
+const referenceProblem = (err: unknown): string | null => {
+  const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+  return code === "23503" ? "A selected source, case, or timeline entry no longer exists." : null;
+};
+
+// The six tables share these columns; the cast keeps one implementation instead of six near-identical ones.
+type AnyCollegeTable = typeof s.policies;
+
+export async function createCollegeRecord<K extends CollegeRecordKey>(
+  db: Database,
+  key: K,
+  collegeId: string,
+  input: CollegeRecordInput[K],
+  actor: string,
+): Promise<MutationResult<string>> {
+  const table = collegeRecordTables[key] as unknown as AnyCollegeTable;
+  try {
+    const [row] = await db
+      .insert(table)
+      .values({ ...input, collegeId, createdBy: actor } as never)
+      .returning({ id: table.id });
+    return ok(row.id);
+  } catch (err) {
+    const problem = referenceProblem(err);
+    if (problem) return fail(problem);
+    throw err;
+  }
+}
+
+export async function updateCollegeRecord<K extends CollegeRecordKey>(
+  db: Database,
+  key: K,
+  id: string,
+  input: CollegeRecordInput[K],
+  actor: string,
+): Promise<MutationResult> {
+  const table = collegeRecordTables[key] as unknown as AnyCollegeTable;
+  const [before] = (await db.select().from(table).where(eq(table.id, id))) as Record<string, unknown>[];
+  if (!before) return fail("Record not found.");
+  if (!changed(before, input as Record<string, unknown>)) return unchanged();
+  try {
+    await db.update(table).set(input as never).where(eq(table.id, id));
+  } catch (err) {
+    const problem = referenceProblem(err);
+    if (problem) return fail(problem);
+    throw err;
+  }
+  return ok(undefined, await markEdited(db, key, id, actor));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { Cite } from "@/components/cite";
-import { UnderReviewTag } from "@/components/tags";
+import { StatusTags } from "@/components/tags";
 import { formatDate } from "@/lib/dates";
 import { citationKey } from "@/lib/citations";
 import type { CitationIndex, PublicCorrection } from "@/lib/public";
@@ -22,7 +22,7 @@ export function CorrectionsBanner({
         {corrections.map((c) => (
           <li key={c.id}>
             <span className="font-medium">{formatDate(c.correctionDate)}:</span> {c.description}{" "}
-            {c.underReview && <UnderReviewTag />}
+            <StatusTags item={c} />
             <Cite id={`correction-${c.id}`} citations={citations[citationKey("correction", c.id)]} />
           </li>
         ))}

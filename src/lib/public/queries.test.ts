@@ -340,3 +340,33 @@ describe("college search", () => {
     expect(await searchColleges(ctx, "_")).toEqual([]);
   });
 });
+
+describe("admin preview", () => {
+  it("includes draft and pending records, flagged as unverified, but never rejected ones", async () => {
+    const college = await f.college({ status: "draft" });
+    const src = await f.source({ status: "pending_review" });
+    const report = await f.report({ collegeId: college.id, sourceId: src.id, status: "pending_review" });
+    await f.statistic({ cleryReportId: report.id, status: "draft" });
+    await f.action({ collegeId: college.id, status: "pending_review", title: "Pending entry" });
+    const verified = await f.action({ collegeId: college.id, title: "Verified entry" });
+    await f.action({ collegeId: college.id, status: "rejected", title: "Rejected entry" });
+    await f.citation({ sourceId: src.id, institutionActionId: verified.id });
+
+    const preview = (await getCollegeProfile({ db, hideDemo: true, preview: true }, college.slug))!;
+    expect(preview.college.unverified).toBe(true);
+    expect(preview.actions.map((a) => [a.title, a.unverified])).toEqual([
+      ["Pending entry", true],
+      ["Verified entry", false],
+    ]);
+    expect(preview.statistics[0].unverified).toBe(true);
+    expect(preview.citations[citationKey("institutionAction", verified.id)][0].source.unverified).toBe(true);
+  });
+
+  it("does not change what the public sees", async () => {
+    const college = await f.college();
+    await f.action({ collegeId: college.id, status: "pending_review" });
+    const pub = (await getCollegeProfile(ctx, college.slug))!;
+    expect(pub.actions).toEqual([]);
+    expect(pub.college.unverified).toBe(false);
+  });
+});

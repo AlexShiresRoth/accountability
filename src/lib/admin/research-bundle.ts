@@ -7,7 +7,19 @@ import { and, eq } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import type { CleryGeography, Offense } from "@/lib/enums";
-import { addCitation, createFootnote, createReport, createSource, saveStatisticsGrid, updateCollege, type GridEntry } from "./records";
+import {
+  addCitation,
+  collegeRecordTables,
+  createCollegeRecord,
+  createFootnote,
+  createReport,
+  createSource,
+  saveStatisticsGrid,
+  updateCollege,
+  type CollegeRecordInput,
+  type CollegeRecordKey,
+  type GridEntry,
+} from "./records";
 import type { SourceInput } from "./validation";
 import { changeStatus, getStatus, type ReviewTableKey } from "./workflow";
 
@@ -37,6 +49,22 @@ export type ResearchBundle = {
     notes?: { marker?: string; page: string; originalText: string; summary?: string }[];
     citations?: BundleCitation[];
   }[];
+  /** Institutional records (responses, policies, resources, timeline entries…), each with its citations. */
+  records?: BundleRecord[];
+};
+
+export type BundleRecord = {
+  [K in CollegeRecordKey]: { key: K; input: CollegeRecordInput[K]; citations: BundleCitation[] };
+}[CollegeRecordKey];
+
+/** The column that identifies an existing record of each type when re-running an import. */
+const identifyingColumn: Record<CollegeRecordKey, string> = {
+  institution_action: "title",
+  institutional_response: "summary",
+  policy: "title",
+  student_resource: "name",
+  college_coverage: "summary",
+  correction: "description",
 };
 
 export type ImportSummary = {
@@ -52,7 +80,14 @@ export function validateBundle(bundle: ResearchBundle): string[] {
     if (!src.url && !src.archivedUrl) problems.push(`Source ${key} has no URL or archived URL.`);
     if (!src.retrievedAt) problems.push(`Source ${key} has no retrieval date.`);
   }
-  const refs = [...(bundle.college.citations ?? []), ...bundle.reports.flatMap((r) => [{ source: r.source }, ...(r.citations ?? [])])];
+  const refs = [
+    ...(bundle.college.citations ?? []),
+    ...bundle.reports.flatMap((r) => [{ source: r.source }, ...(r.citations ?? [])]),
+    ...(bundle.records ?? []).flatMap((r) => r.citations),
+  ];
+  for (const r of bundle.records ?? []) {
+    if (r.key !== "college_coverage" && !r.citations.length) problems.push(`${r.key} record has no citation.`);
+  }
   for (const ref of refs) if (!bundle.sources[ref.source]) problems.push(`Unknown source "${ref.source}".`);
 
   for (const r of bundle.reports) {
@@ -108,15 +143,26 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
     log.push(`Source "${input.title}": created.`);
   }
 
-  const cite = async (key: "college" | "clery_report", recordId: string, c: BundleCitation) => {
-    const column = key === "college" ? s.citations.collegeId : s.citations.cleryReportId;
-    const [dup] = await db
-      .select({ id: s.citations.id })
+  const citationColumns = {
+    college: s.citations.collegeId,
+    clery_report: s.citations.cleryReportId,
+    institution_action: s.citations.institutionActionId,
+    institutional_response: s.citations.institutionalResponseId,
+    policy: s.citations.policyId,
+    student_resource: s.citations.studentResourceId,
+    correction: s.citations.correctionId,
+  } as const;
+  /** Adds a citation unless the same one (record, source, page, excerpt) is already there. */
+  const cite = async (key: keyof typeof citationColumns, recordId: string, c: BundleCitation) => {
+    const column = citationColumns[key];
+    const existing = await db
+      .select({ pinpoint: s.citations.pinpoint, excerpt: s.citations.excerpt })
       .from(s.citations)
       .where(and(eq(column, recordId), eq(s.citations.sourceId, sourceIds[c.source])));
-    if (dup) return;
+    if (existing.some((e) => (e.pinpoint ?? null) === (c.pinpoint ?? null) && (e.excerpt ?? null) === (c.excerpt ?? null))) return;
     await addCitation(db, key, recordId, { sourceId: sourceIds[c.source], pinpoint: c.pinpoint ?? null, excerpt: c.excerpt ?? null, claim: c.claim ?? null });
   };
+
 
   // College: apply only the given fields.
   if (bundle.college.updates) {
@@ -175,6 +221,28 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
     const stats = await db.select({ id: s.crimeStatistics.id }).from(s.crimeStatistics).where(eq(s.crimeStatistics.cleryReportId, reportId));
     for (const st of stats) queue("crime_statistic", st.id);
     log.push(`${r.reportYear} report: created with ${stats.length} figures and ${r.notes?.length ?? 0} notes.`);
+  }
+
+  // Institutional records: skip one that already exists (same identifying field) rather than duplicate it.
+  for (const r of bundle.records ?? []) {
+    const table = collegeRecordTables[r.key] as unknown as typeof s.policies;
+    const column = (table as unknown as Record<string, typeof s.policies.title>)[identifyingColumn[r.key]];
+    const value = (r.input as Record<string, unknown>)[identifyingColumn[r.key]] as string;
+    const [existing] = await db
+      .select({ id: table.id })
+      .from(table)
+      .where(and(eq(table.collegeId, college.id), eq(column, value)));
+    if (existing) {
+      // Still add any of its citations that are missing (e.g. after an earlier, incomplete import).
+      if (r.key !== "college_coverage") for (const c of r.citations) await cite(r.key, existing.id, c);
+      log.push(`${r.key} "${value.slice(0, 50)}": already exists, kept; citations checked.`);
+      continue;
+    }
+    const created = await createCollegeRecord(db, r.key, college.id, r.input as never, actor);
+    if (!created.ok) throw new Error(created.problems.join(" "));
+    if (r.key !== "college_coverage") for (const c of r.citations) await cite(r.key, created.value, c);
+    queue(r.key, created.value);
+    log.push(`${r.key} "${value.slice(0, 50)}": created.`);
   }
 
   // Hand everything to human review. Only drafts move; anything further along is left as it is.

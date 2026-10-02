@@ -40,6 +40,10 @@ Deferred until the inbox exists, since candidates are only useful once researche
       `ADMIN_SESSION_SECRET`.
 - [ ] Migrate the production database, **schema only, no seed** (`pnpm db:migrate:prod`), after reviewing
       the migration plan. Vercel crons only run on production deployments, which use the production DB.
+- [ ] Database connections: the app must use Supabase's **session** pooler (port 5432); the transaction pooler hangs
+      under concurrent queries with postgres.js (see `src/db/client.ts`). Session-pooler connections are limited, so set a
+      small per-instance `max` on Vercel and confirm the pool size under load before launch. Dev hit the 15-client
+      session pool limit (`EMAXCONNSESSION`) until clients were capped at 4 with a 20 s idle timeout.
 - [ ] Re-test GDELT from Vercel. On 2026-09-29 it returned HTTP 429 to every request from the dev network.
 - [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/discover`.
 
@@ -52,6 +56,12 @@ Setup, architecture, editorial principles, and how verified data is added.
       and imported as `pending_review` (`pnpm import-research cornell-university`).
 - [ ] Human verification of the Cornell transcription against the PDFs (page 6 of each report), then verify the
       college record to publish the profile.
+- [x] Cornell institutional record (7 responses, Policy 6.4, 11 resources) transcribed from the 2026 ASR in
+      `research/cornell-institutional.ts` and imported as `pending_review` (`pnpm import-research cornell-institutional`).
+- [ ] Verify the Cornell institutional records against ASR pp. 6, 20–23, 33.
+- [ ] Cornell follow-up research: Policy 6.4 title/effective date and current procedures, and the Office of Civil
+      Rights statistical summaries (officeofcivilrights.cornell.edu blocks automated retrieval; needs a browser and an
+      archived copy).
 - [ ] Multi-campus institutions: Cornell publishes separate reports for Ithaca, Cornell Tech, and Weill Cornell Medicine,
       but the schema allows one report per college per year. Decide whether to add a campus dimension.
 - [ ] Discovery gaps: Cornell Chronicle, statements.cornell.edu, The Harvard Crimson, Columbia Daily

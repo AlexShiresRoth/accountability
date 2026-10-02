@@ -25,7 +25,7 @@ import type {
 } from "@/lib/enums";
 import { citationKey, type CitationTargetKind } from "@/lib/citations";
 import { resolveStatistics, type ResolvedStatistic, type StatisticInput } from "@/lib/statistics";
-import { inIds, isPublic, isUnderReview, type PublicContext } from "./visibility";
+import { inIds, isPublic, isUnderReview, isUnverified, type PublicContext } from "./visibility";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +42,8 @@ export type PublicSource = {
   archivedUrl: string | null;
   notes: string | null;
   isDemo: boolean;
+  /** Admin preview only: the source isn't verified yet. */
+  unverified: boolean;
 };
 
 export type PublicCitation = {
@@ -56,7 +58,8 @@ export type PublicCitation = {
 export type CitationIndex = Record<string, PublicCitation[]>;
 export { citationKey, type CitationTargetKind };
 
-type Flags = { underReview: boolean; isDemo: boolean };
+/** `unverified` is only ever true in admin preview; public queries return only published records. */
+type Flags = { underReview: boolean; unverified: boolean; isDemo: boolean };
 
 export type PublicCollegeSummary = {
   id: string;
@@ -191,6 +194,7 @@ const sourceColumns = {
   archivedUrl: s.sources.archivedUrl,
   notes: s.sources.notes,
   isDemo: s.sources.isDemo,
+  unverified: sql<boolean>`${s.sources.status} not in ('verified', 'needs_update')`,
 };
 
 const collegeSummaryColumns = {
@@ -205,7 +209,7 @@ const collegeSummaryColumns = {
 
 function flags<T extends { status: VerificationStatus; isDemo: boolean }>(row: T): Omit<T, "status"> & Flags {
   const { status, ...rest } = row;
-  return { ...rest, underReview: isUnderReview(status) };
+  return { ...rest, underReview: isUnderReview(status), unverified: isUnverified(status) };
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +331,7 @@ export async function getCollegeProfile(ctx: PublicContext, slug: string): Promi
         unfoundedCount: r.unfoundedCount,
         footnoteIds: footnotesByStat.get(r.id) ?? [],
         underReview: isUnderReview(r.status),
+        unverified: isUnverified(r.status),
       }),
     ),
   );

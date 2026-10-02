@@ -13,6 +13,8 @@ export type StatisticInput = {
   unfoundedCount: number | null;
   footnoteIds: string[];
   underReview: boolean;
+  /** Admin preview only: the figure isn't published yet. */
+  unverified?: boolean;
 };
 
 export type ResolvedStatistic = {
@@ -29,6 +31,8 @@ export type ResolvedStatistic = {
   /** Footnotes from every report that published this cell, so none are discarded. */
   footnoteIds: string[];
   underReview: boolean;
+  /** Admin preview only: the figure isn't published yet. */
+  unverified?: boolean;
 };
 
 const cellKey = (s: { calendarYear: number; offense: string; geography: string }) =>
@@ -63,6 +67,7 @@ export function resolveStatistics(inputs: StatisticInput[]): ResolvedStatistic[]
       revisions: older.filter((o) => o.count !== latest.count).map((o) => ({ reportYear: o.reportYear, count: o.count })),
       footnoteIds: [...new Set(sorted.flatMap((s) => s.footnoteIds))],
       underReview: latest.underReview,
+      unverified: latest.unverified ?? false,
     });
   }
 

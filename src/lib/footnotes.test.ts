@@ -12,6 +12,7 @@ const note = (o: Partial<PublicFootnote>): PublicFootnote => ({
   page: null,
   statisticIds: ["s"],
   underReview: false,
+  unverified: false,
   isDemo: false,
   ...o,
 });
