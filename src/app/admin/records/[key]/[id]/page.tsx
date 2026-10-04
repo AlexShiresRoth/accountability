@@ -20,11 +20,11 @@ export default async function RecordAdmin({ params }: PageProps<"/admin/records/
   if (!isCollegeRecordKey(key)) notFound();
   const data = await getCollegeRecord(db, key, id);
   if (!data) notFound();
-  const { record, college } = data;
+  const { record, college, parentCase } = data;
   const [sources, cases, actions, coverageSource] = await Promise.all([
     sourceOptions(db),
     caseOptions(db),
-    actionOptions(db, college.id),
+    college ? actionOptions(db, college.id) : Promise.resolve([]),
     key === "college_coverage" ? getSource(db, record.sourceId as string) : Promise.resolve(null),
   ]);
   const status = record.status as VerificationStatus;
@@ -40,7 +40,15 @@ export default async function RecordAdmin({ params }: PageProps<"/admin/records/
     <div className="space-y-8">
       <div>
         <p className="text-sm text-ink-muted">
-          <Link href="/admin/colleges">Colleges</Link> / <Link href={`/admin/colleges/${college.id}`}>{college.name}</Link> /
+          {college ? (
+            <>
+              <Link href="/admin/colleges">Colleges</Link> / <Link href={`/admin/colleges/${college.id}`}>{college.name}</Link> /
+            </>
+          ) : parentCase ? (
+            <>
+              <Link href="/admin/cases">Cases</Link> / <Link href={`/admin/cases/${parentCase.id}`}>{parentCase.title}</Link> /
+            </>
+          ) : null}
         </p>
         <h1 className="text-2xl">{recordLabels[key].singular}</h1>
         {coverageSource && (
@@ -65,7 +73,12 @@ export default async function RecordAdmin({ params }: PageProps<"/admin/records/
         </div>
         <div className="space-y-4">
           <StatusPanel recordKey={key} record={reviewable} />
-          <DeletePanel recordKey={key} id={id} status={status} redirectTo={`/admin/colleges/${college.id}`} />
+          <DeletePanel
+            recordKey={key}
+            id={id}
+            status={status}
+            redirectTo={college ? `/admin/colleges/${college.id}` : parentCase ? `/admin/cases/${parentCase.id}` : "/admin"}
+          />
         </div>
       </div>
     </div>

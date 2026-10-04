@@ -8,6 +8,8 @@ import type { Database } from "@/db/types";
 import { cleryGeographies, offenses, PUBLIC_STATUSES, type CleryGeography, type Offense } from "@/lib/enums";
 import type {
   ActionInput,
+  CaseInput,
+  EventInput,
   CitationInput,
   CollegeInput,
   CorrectionInput,
@@ -296,6 +298,8 @@ const citationField = {
   policy: "policyId",
   student_resource: "studentResourceId",
   correction: "correctionId",
+  case: "caseId",
+  case_event: "caseEventId",
 } as const satisfies Partial<Record<ReviewTableKey, keyof typeof s.citations.$inferInsert>>;
 
 export type CitableKey = keyof typeof citationField;
@@ -393,6 +397,85 @@ export async function updateCollegeRecord<K extends CollegeRecordKey>(
     throw err;
   }
   return ok(undefined, await markEdited(db, key, id, actor));
+}
+
+// ---------------------------------------------------------------------------
+// Cases, events, and case corrections
+// ---------------------------------------------------------------------------
+
+export async function createCase(db: Database, input: CaseInput, actor: string): Promise<MutationResult<string>> {
+  const { collegeIds, ...fields } = input;
+  try {
+    const id = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(s.cases).values({ ...fields, createdBy: actor }).returning({ id: s.cases.id });
+      await tx.insert(s.caseColleges).values(collegeIds.map((collegeId) => ({ caseId: row.id, collegeId })));
+      return row.id;
+    });
+    return ok(id);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+    if (code === "23505") return fail(`The slug "${input.slug}" is already used.`);
+    if (code === "23503") return fail("A selected institution no longer exists.");
+    throw err;
+  }
+}
+
+/** Updates a case and its linked institutions. Changing either unpublishes a published case. */
+export async function updateCase(db: Database, id: string, input: CaseInput, actor: string): Promise<MutationResult> {
+  const { collegeIds, ...fields } = input;
+  const [before] = await db.select().from(s.cases).where(eq(s.cases.id, id));
+  if (!before) return fail("Case not found.");
+  const links = await db.select({ collegeId: s.caseColleges.collegeId }).from(s.caseColleges).where(eq(s.caseColleges.caseId, id));
+  const current = links.map((l) => l.collegeId).sort();
+  const next = [...new Set(collegeIds)].sort();
+  const collegesChanged = current.join() !== next.join();
+  if (!changed(before, fields) && !collegesChanged) return unchanged();
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.update(s.cases).set(fields).where(eq(s.cases.id, id));
+      if (collegesChanged) {
+        await tx.delete(s.caseColleges).where(eq(s.caseColleges.caseId, id));
+        await tx.insert(s.caseColleges).values(next.map((collegeId) => ({ caseId: id, collegeId })));
+      }
+    });
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+    if (code === "23505") return fail(`The slug "${input.slug}" is already used.`);
+    throw err;
+  }
+  // Which institutions a case appears under is part of what was verified.
+  return ok(undefined, await markEdited(db, "case", id, actor));
+}
+
+/** An event may only update an earlier event of the same case, and never itself. */
+async function supersedesProblem(db: Database, caseId: string, eventId: string | null, supersedesEventId: string | null) {
+  if (!supersedesEventId) return null;
+  if (supersedesEventId === eventId) return "An event can't update itself.";
+  const [target] = await db.select({ caseId: s.caseEvents.caseId }).from(s.caseEvents).where(eq(s.caseEvents.id, supersedesEventId));
+  return target?.caseId === caseId ? null : "An event can only update another event in the same case.";
+}
+
+export async function createCaseEvent(db: Database, caseId: string, input: EventInput, actor: string): Promise<MutationResult<string>> {
+  const problem = await supersedesProblem(db, caseId, null, input.supersedesEventId);
+  if (problem) return fail(problem);
+  const [row] = await db.insert(s.caseEvents).values({ ...input, caseId, createdBy: actor }).returning({ id: s.caseEvents.id });
+  return ok(row.id);
+}
+
+export async function updateCaseEvent(db: Database, id: string, input: EventInput, actor: string): Promise<MutationResult> {
+  const [before] = await db.select().from(s.caseEvents).where(eq(s.caseEvents.id, id));
+  if (!before) return fail("Event not found.");
+  const problem = await supersedesProblem(db, before.caseId, id, input.supersedesEventId);
+  if (problem) return fail(problem);
+  if (!changed(before, input)) return unchanged();
+  await db.update(s.caseEvents).set(input).where(eq(s.caseEvents.id, id));
+  return ok(undefined, await markEdited(db, "case_event", id, actor));
+}
+
+export async function createCaseCorrection(db: Database, caseId: string, input: CorrectionInput, actor: string): Promise<MutationResult<string>> {
+  const [row] = await db.insert(s.corrections).values({ ...input, caseId, createdBy: actor }).returning({ id: s.corrections.id });
+  return ok(row.id);
 }
 
 // ---------------------------------------------------------------------------

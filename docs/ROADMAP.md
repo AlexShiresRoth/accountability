@@ -15,16 +15,25 @@ legal/status distinctions, researcher usability, public usability, performance, 
 | Discovery job (manual) | `pnpm discover`: feeds + GDELT → `candidate_item` (dev only, never publishes) |
 | 5a. Admin core | Sign-in, dashboard, verification workflow + audit log, inbox, sources, colleges, reports, statistics grid, footnotes, citations |
 | 5a follow-ups | Unfounded counts in the grid and on profiles; per-figure status review on report pages |
+| 5b. Admin: profile content and cases | Responses, policies, resources, timeline, coverage, corrections; cases with events, case corrections; profile and case previews |
+| Chi Phi case (research) | `research/cornell-chi-phi.ts`: 9 primary sources, case + 9 events, imported as pending review |
+| Discovery: court dockets | CourtListener federal dockets naming each institution as a party → inbox leads; "source only" accept for dockets |
 | Discovery: Google News | Keyless Google News search per college; publisher URL required on accept; headline de-dup and re-filing; terms cover crimes against women broadly (shared list in `src/jobs/discovery/terms.ts`); Columbia results must name Columbia in the headline |
 
 ## Next
 
-### 5b. Admin: remaining records
-Cases and events (with superseded-event links), accountability timeline entries, institutional responses,
-policies, student resources, coverage, corrections, and preview of public pages including unverified records.
+### Research follow-up: Chi Phi case and other Cornell cases
+- [ ] Verify the Chi Phi case against its sources; add excerpts for the government and university statements after opening each page.
+- [ ] Re-scope the three Cornell coverage drafts to the case (scope "About a specific case").
+- [ ] Not yet entered: the AG's review of Cornell's response (no primary record found), Cornell's agreement to an
+      independent review, Cornell's edited FAQ, and the fraternity member's suit to remove allegations.
+- [ ] Other Cornell leads: federal dockets now in the inbox (e.g. Doe v. Cornell University, N.D.N.Y. 2025); a 2016
+      sexual assault suit; a 1996 state ruling on harassment procedures.
+- [ ] Docket leads are federal only. State-court suits arrive through news discovery; consider NYSCEF monitoring later.
 
-Decisions in force (5a): editing a published record returns it to `pending_review` until re-verified;
-self-verification is allowed but "entered by / reviewed by" is shown; only draft or rejected records can be deleted.
+Decisions in force: editing a published record returns it to `pending_review` until re-verified; self-verification is
+allowed but "entered by / reviewed by" is shown; only draft or rejected records can be deleted; a case needs an editorial
+justification, an institution, and a verified, cited event before it can be verified.
 
 ### 6. Learn, SEO
 Scenario content review, sitemap, structured metadata.

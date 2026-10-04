@@ -7,6 +7,7 @@ import type { Database } from "@/db/types";
 import type { CoverageTopic } from "@/lib/enums";
 import { parseFeed } from "./feed-parser";
 import { fetchGdelt } from "./gdelt";
+import { courtListenerUrl, parseCourtListener } from "./courtlistener";
 import { googleNewsUrl, headlineKey, parseGoogleNews } from "./google-news";
 import { isRelevant, suggestTopic } from "./relevance";
 import { feeds as defaultFeeds, gdeltQueries as defaultQueries, type CollegeQuery, type FeedSource } from "./sources";
@@ -26,7 +27,11 @@ export type DiscoveryOptions = {
   feeds?: FeedSource[];
   /** Exact-name queries used for GDELT and Google News. */
   gdeltQueries?: CollegeQuery[];
-  sources?: { gdelt?: boolean; googleNews?: boolean };
+  sources?: { gdelt?: boolean; googleNews?: boolean; courtDockets?: boolean };
+  /** Court-docket lookback in days. Defaults to googleNewsDays; dockets stay relevant far longer than news. */
+  courtDays?: number;
+  /** "Today", for the court-docket lookback window (injectable for tests). */
+  now?: Date;
 };
 
 export type DiscoveryResult = {
@@ -51,7 +56,7 @@ type Candidate = {
   snippet: string | null;
   collegeId: string;
   suggestedTopic: CoverageTopic;
-  via: "feed" | "gdelt" | "google_news";
+  via: "feed" | "gdelt" | "google_news" | "court";
 };
 
 export const USER_AGENT = "CampusAccountabilityBot/0.1 (public-interest research; discovery of news coverage)";
@@ -63,6 +68,7 @@ export const defaultFetchText: FetchText = async (url) => {
 
 const GDELT_INTERVAL_MS = 6_000;
 const GOOGLE_NEWS_INTERVAL_MS = 2_000;
+const COURTLISTENER_INTERVAL_MS = 2_000;
 
 export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryResult> {
   const {
@@ -77,6 +83,8 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
   } = opts;
   const useGdelt = sources.gdelt ?? true;
   const useGoogleNews = sources.googleNews ?? true;
+  const useCourtDockets = sources.courtDockets ?? true;
+  const now = opts.now ?? new Date();
 
   const [run] = await db.insert(s.ingestionRuns).values({ job: "discovery" }).returning({ id: s.ingestionRuns.id });
   const errors: string[] = [];
@@ -180,6 +188,36 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
     }
   }
 
+  // Federal court dockets naming the institution as a party (case leads).
+  const since = new Date(now.getTime() - (opts.courtDays ?? googleNewsDays) * 86_400_000).toISOString().slice(0, 10);
+  let courtRequests = 0;
+  for (const query of useCourtDockets ? gdeltQueries : []) {
+    const label = `court dockets: ${query.courtNames.join(" / ")}`;
+    const cid = collegeId(query.collegeSlug);
+    if (!cid) continue;
+    if (courtRequests++ > 0) await sleep(COURTLISTENER_INTERVAL_MS);
+    try {
+      const { status, body } = await fetchText(courtListenerUrl(query.courtNames, since));
+      if (status !== 200) throw new Error(`HTTP ${status}`);
+      const leads = parseCourtListener(body);
+      addCount(bySource, label, leads.length);
+      for (const d of leads) {
+        candidates.push({
+          url: d.url,
+          title: d.title,
+          publisher: d.court ? `Federal court docket (${d.court})` : "Federal court docket",
+          publishedAt: d.filedAt,
+          snippet: "Federal court docket via CourtListener. A lead only: open the docket and read the filings before creating a case.",
+          collegeId: cid,
+          suggestedTopic: "lawsuit",
+          via: "court",
+        });
+      }
+    } catch (err) {
+      errors.push(`${label}: ${message(err)}`);
+    }
+  }
+
   // Full-text search matches any article that mentions the institution, so a story about another tracked
   // school can arrive under the wrong query. If the headline names a different tracked school and not the
   // queried one, file it under the school it names.
@@ -188,7 +226,7 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
     .map((q) => ({ id: collegeIdBySlug.get(q.collegeSlug), re: new RegExp(`\\b${escapeRegExp(q.shortName)}\\b`, "i") }))
     .filter((x): x is { id: string; re: RegExp } => Boolean(x.id));
   for (const c of candidates) {
-    if (c.via === "feed" || !c.title) continue;
+    if (c.via === "feed" || c.via === "court" || !c.title) continue;
     const named = headlineSchools.filter((h) => h.re.test(c.title!)).map((h) => h.id);
     if (named.length && !named.includes(c.collegeId)) {
       c.collegeId = named[0];
@@ -206,7 +244,7 @@ export async function runDiscovery(opts: DiscoveryOptions): Promise<DiscoveryRes
   );
   for (let i = candidates.length - 1; i >= 0; i--) {
     const c = candidates[i];
-    const re = c.via === "feed" ? undefined : strict.get(c.collegeId);
+    const re = c.via === "feed" || c.via === "court" ? undefined : strict.get(c.collegeId);
     if (re && !re.test(c.title ?? "")) {
       candidates.splice(i, 1);
       droppedNoHeadlineName++;

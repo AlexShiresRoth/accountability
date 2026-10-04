@@ -23,6 +23,8 @@ export type CollegeQuery = {
    * matches too loosely (boilerplate mentions, or ambiguous names like "Columbia").
    */
   headlineMustName?: boolean;
+  /** How the institution is named as a party in court (for docket search). */
+  courtNames: string[];
 };
 
 export const feeds: FeedSource[] = [
@@ -32,7 +34,20 @@ export const feeds: FeedSource[] = [
 
 /** Exact-name queries, used for both GDELT and Google News search. */
 export const gdeltQueries: CollegeQuery[] = [
-  { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
-  { collegeSlug: "harvard-university", names: ["Harvard University", "Harvard College"], shortName: "Harvard" },
-  { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia", headlineMustName: true },
+  { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell", courtNames: ["Cornell University"] },
+  {
+    collegeSlug: "harvard-university",
+    names: ["Harvard University", "Harvard College"],
+    shortName: "Harvard",
+    // Harvard is usually sued as "President and Fellows of Harvard College".
+    courtNames: ["Harvard College", "Harvard University"],
+  },
+  {
+    collegeSlug: "columbia-university",
+    names: ["Columbia University"],
+    shortName: "Columbia",
+    headlineMustName: true,
+    // Usually sued as "The Trustees of Columbia University in the City of New York".
+    courtNames: ["Columbia University"],
+  },
 ];

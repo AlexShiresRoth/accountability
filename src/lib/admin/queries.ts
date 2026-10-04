@@ -76,15 +76,28 @@ async function pendingCollegeRecords(db: Database) {
     db.select({ id: s.corrections.id, label: s.corrections.description, createdBy: s.corrections.createdBy }).from(s.corrections).where(pending(s.corrections)),
   ]);
   const keys = ["institution_action", "institutional_response", "policy", "student_resource", "college_coverage", "correction"] as const;
-  return rows.flatMap((list, i) =>
-    list.map((r) => ({
-      id: r.id,
-      label: String(r.label).replaceAll("_", " ").slice(0, 90),
-      createdBy: r.createdBy,
-      kind: reviewTables[keys[i]].label,
-      href: `/admin/records/${keys[i]}/${r.id}`,
-    })),
-  );
+  const casesPending = await db.select({ id: s.cases.id, label: s.cases.title, createdBy: s.cases.createdBy }).from(s.cases).where(pending(s.cases));
+  const eventsPending = await db
+    .select({ id: s.caseEvents.id, label: s.cases.title, createdBy: s.caseEvents.createdBy, caseId: s.caseEvents.caseId })
+    .from(s.caseEvents)
+    .innerJoin(s.cases, eq(s.caseEvents.caseId, s.cases.id))
+    .where(pending(s.caseEvents));
+  const caseItems = [
+    ...casesPending.map((r) => ({ id: r.id, label: r.label, createdBy: r.createdBy, kind: "Case", href: `/admin/cases/${r.id}` })),
+    ...eventsPending.map((r) => ({ id: r.id, label: `Event in ${r.label}`, createdBy: r.createdBy, kind: "Case event", href: `/admin/cases/${r.caseId}/events/${r.id}` })),
+  ];
+  return [
+    ...rows.flatMap((list, i) =>
+      list.map((r) => ({
+        id: r.id,
+        label: String(r.label).replaceAll("_", " ").slice(0, 90),
+        createdBy: r.createdBy,
+        kind: reviewTables[keys[i]].label,
+        href: `/admin/records/${keys[i]}/${r.id}`,
+      })),
+    ),
+    ...caseItems,
+  ];
 }
 
 export async function listSources(db: Database) {
@@ -220,16 +233,24 @@ export async function getCollegeRecords(db: Database, collegeId: string) {
   return { actions, responses, policies, resources, coverage, corrections };
 }
 
-/** One institutional record with its college, for the record page. */
+/**
+ * One institutional record with its parent, for the record page. Most belong to a college;
+ * corrections may instead belong to a case.
+ */
 export async function getCollegeRecord(db: Database, key: CollegeRecordKey, id: string) {
   const table = collegeRecordTables[key] as unknown as typeof s.policies;
   const [record] = (await db.select().from(table).where(eq(table.id, id))) as Record<string, unknown>[];
   if (!record) return null;
-  const [college] = await db
-    .select({ id: s.colleges.id, name: s.colleges.name, slug: s.colleges.slug })
-    .from(s.colleges)
-    .where(eq(s.colleges.id, record.collegeId as string));
-  return { record, college };
+  const [college] = record.collegeId
+    ? await db
+        .select({ id: s.colleges.id, name: s.colleges.name, slug: s.colleges.slug })
+        .from(s.colleges)
+        .where(eq(s.colleges.id, record.collegeId as string))
+    : [];
+  const [parentCase] = record.caseId
+    ? await db.select({ id: s.cases.id, title: s.cases.title }).from(s.cases).where(eq(s.cases.id, record.caseId as string))
+    : [];
+  return { record, college: college ?? null, parentCase: parentCase ?? null };
 }
 
 /** Timeline entries a coverage item can be linked to. */
@@ -239,4 +260,62 @@ export async function actionOptions(db: Database, collegeId: string) {
     .from(s.institutionActions)
     .where(eq(s.institutionActions.collegeId, collegeId))
     .orderBy(desc(s.institutionActions.actionDate));
+}
+
+// ---------------------------------------------------------------------------
+// Cases (step 5b-2)
+// ---------------------------------------------------------------------------
+
+export async function listCases(db: Database) {
+  const rows = await db
+    .select({
+      id: s.cases.id,
+      title: s.cases.title,
+      slug: s.cases.slug,
+      status: s.cases.status,
+      isDemo: s.cases.isDemo,
+      events: sql<number>`(select count(*)::int from ${s.caseEvents} where ${s.caseEvents.caseId} = ${s.cases.id})`,
+      colleges: sql<string>`(select string_agg(${s.colleges.name}, ', ' order by ${s.colleges.name}) from ${s.caseColleges} join ${s.colleges} on ${s.colleges.id} = ${s.caseColleges.collegeId} where ${s.caseColleges.caseId} = ${s.cases.id})`,
+    })
+    .from(s.cases)
+    .orderBy(desc(s.cases.updatedAt));
+  return rows;
+}
+
+/** A case with everything attached to it, in every status, for the case admin page. */
+export async function getCaseAdmin(db: Database, id: string) {
+  const [record] = await db.select().from(s.cases).where(eq(s.cases.id, id));
+  if (!record) return null;
+  const [colleges, events, corrections, coverage] = await Promise.all([
+    db
+      .select({ id: s.colleges.id, name: s.colleges.name, slug: s.colleges.slug })
+      .from(s.caseColleges)
+      .innerJoin(s.colleges, eq(s.caseColleges.collegeId, s.colleges.id))
+      .where(eq(s.caseColleges.caseId, id))
+      .orderBy(asc(s.colleges.name)),
+    db
+      .select()
+      .from(s.caseEvents)
+      .where(eq(s.caseEvents.caseId, id))
+      .orderBy(asc(s.caseEvents.eventDate), asc(s.caseEvents.sequence), asc(s.caseEvents.createdAt)),
+    db.select().from(s.corrections).where(eq(s.corrections.caseId, id)).orderBy(desc(s.corrections.correctionDate)),
+    db
+      .select({ id: s.collegeCoverage.id, summary: s.collegeCoverage.summary, status: s.collegeCoverage.status, publisher: s.sources.publisher })
+      .from(s.collegeCoverage)
+      .innerJoin(s.sources, eq(s.collegeCoverage.sourceId, s.sources.id))
+      .where(eq(s.collegeCoverage.caseId, id)),
+  ]);
+  return { record, colleges, events, corrections, coverage };
+}
+
+export async function getCaseEvent(db: Database, id: string) {
+  const [event] = await db.select().from(s.caseEvents).where(eq(s.caseEvents.id, id));
+  if (!event) return null;
+  const [caseRow] = await db.select({ id: s.cases.id, title: s.cases.title, slug: s.cases.slug }).from(s.cases).where(eq(s.cases.id, event.caseId));
+  const siblings = await db
+    .select({ id: s.caseEvents.id, eventDate: s.caseEvents.eventDate, eventType: s.caseEvents.eventType })
+    .from(s.caseEvents)
+    .where(eq(s.caseEvents.caseId, event.caseId))
+    .orderBy(asc(s.caseEvents.eventDate), asc(s.caseEvents.sequence));
+  return { event, case: caseRow, siblings };
 }

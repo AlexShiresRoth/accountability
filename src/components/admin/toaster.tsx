@@ -18,7 +18,9 @@ const notices: Record<string, Omit<Toast, "id">> = {
   "college-created": { kind: "success", title: "College created", detail: "Saved as a draft." },
   "report-created": { kind: "success", title: "Report created", detail: "Saved as a draft. Enter its figures below." },
   "candidate-accepted": { kind: "success", title: "Accepted as draft", detail: "A draft source and coverage entry were created." },
+  "candidate-source": { kind: "success", title: "Saved as a draft source", detail: "Cite it from a case or record, then verify it." },
   deleted: { kind: "success", title: "Deleted" },
+  "case-created": { kind: "success", title: "Case created as draft", detail: "Add events with citations, then verify." },
   "record-created": { kind: "success", title: "Created as draft", detail: "Add a citation, then verify it to publish." },
 };
 

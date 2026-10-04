@@ -309,6 +309,28 @@ describe("inbox", () => {
     expect(src.url).toBe("https://www.cbsnews.com/news/example/");
   });
 
+  it("can save a lead (e.g. a court docket) as a draft source only, without a summary or coverage", async () => {
+    const college = await f.college();
+    const [c] = await db
+      .insert(s.candidateItems)
+      .values({ url: `https://www.courtlistener.com/docket/${Date.now()}/doe-v-x/`, title: "Doe v. X (N.D.N.Y.)", publisher: "Federal court docket", collegeId: college.id })
+      .returning();
+    const parsed = acceptCandidateSchema.parse({
+      mode: "source_only",
+      collegeId: college.id,
+      scope: "institutional",
+      topic: "lawsuit",
+      summary: "",
+      sourceType: "court_record",
+      publisher: "U.S. District Court, N.D.N.Y.",
+      title: "Doe v. X (N.D.N.Y.)",
+    });
+    const res = await acceptCandidate(db, c.id, parsed, actor);
+    expect(res).toMatchObject({ ok: true, value: { coverageId: null } });
+    const coverage = await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.collegeId, college.id));
+    expect(coverage).toEqual([]);
+  });
+
   it("requires a neutral summary and a case link for case-specific coverage", () => {
     const college = crypto.randomUUID();
     expect(acceptCandidateSchema.safeParse({ ...input(college), summary: "Title IX office revises procedures" }).success).toBe(false);

@@ -8,6 +8,7 @@ import { fixtures } from "@/test/fixtures";
 import { decodeEntities, parseFeed } from "./feed-parser";
 import { buildGdeltQuery, parseGdeltResponse } from "./gdelt";
 import { searchTermGroups } from "./terms";
+import { courtListenerUrl, isCourtListenerUrl, parseCourtListener } from "./courtlistener";
 import { googleNewsUrl, headlineKey, isGoogleNewsUrl, parseGoogleNews, stripPublisherSuffix } from "./google-news";
 import { isRelevant, suggestTopic } from "./relevance";
 import { runDiscovery, type FetchText } from "./run";
@@ -128,10 +129,10 @@ describe("runDiscovery", () => {
     sleep: async () => {},
     feeds: [{ url: "https://sun.example/feed", publisher: "The Sun", collegeSlug: "cornell-university" }],
     gdeltQueries: [
-      { collegeSlug: "harvard-university", names: ["Harvard University"], shortName: "Harvard" },
-      { collegeSlug: "missing-college", names: ["Nowhere"], shortName: "Nowhere" },
+      { collegeSlug: "harvard-university", names: ["Harvard University"], courtNames: ["Harvard University"], shortName: "Harvard" },
+      { collegeSlug: "missing-college", names: ["Nowhere"], courtNames: ["Nowhere"], shortName: "Nowhere" },
     ],
-    sources: { googleNews: false },
+    sources: { googleNews: false, courtDockets: false },
   });
 
   const fetchOk: FetchText = async (url) => ({
@@ -239,8 +240,8 @@ describe("runDiscovery with Google News", () => {
         body: url.includes("news.google.com") ? (isFirstGroup(url) ? google : rss("")) : feed,
       }),
       feeds: [{ url: "https://sun.example/feed", publisher: "The Sun", collegeSlug: "cornell-university" }],
-      gdeltQueries: [{ collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" }],
-      sources: { gdelt: false },
+      gdeltQueries: [{ collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" }],
+      sources: { gdelt: false, courtDockets: false },
       googleNewsDays: 90,
     });
 
@@ -289,10 +290,10 @@ describe("re-filing search results by headline", () => {
       fetchText: async (url) => ({ status: 200, body: isFirstGroup(url) ? google(decodeURIComponent(url)) : rss("") }),
       feeds: [],
       gdeltQueries: [
-        { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
-        { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia" },
+        { collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" },
+        { collegeSlug: "columbia-university", names: ["Columbia University"], courtNames: ["Columbia University"], shortName: "Columbia" },
       ],
-      sources: { gdelt: false },
+      sources: { gdelt: false, courtDockets: false },
     });
     expect(result.refiled).toBe(1);
     expect(result.duplicateHeadlines).toBe(1); // the re-filed Boston Globe story was already found under Cornell
@@ -329,10 +330,10 @@ describe("headline requirement", () => {
       }),
       feeds: [],
       gdeltQueries: [
-        { collegeSlug: "cornell-university", names: ["Cornell University"], shortName: "Cornell" },
-        { collegeSlug: "columbia-university", names: ["Columbia University"], shortName: "Columbia", headlineMustName: true },
+        { collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" },
+        { collegeSlug: "columbia-university", names: ["Columbia University"], courtNames: ["Columbia University"], shortName: "Columbia", headlineMustName: true },
       ],
-      sources: { gdelt: false },
+      sources: { gdelt: false, courtDockets: false },
     });
     expect(result.droppedNoHeadlineName).toBe(1);
     const rows = await db.select().from(s.candidateItems);
@@ -364,4 +365,65 @@ describe("search terms", () => {
     "feed filter skips harassment without a sexual or gender context: %s",
     (t) => expect(isRelevant(t)).toBe(false),
   );
+});
+
+describe("court dockets (CourtListener)", () => {
+  const api = JSON.stringify({
+    count: 2,
+    results: [
+      { caseName: "Doe v. Cornell University", court_citation_string: "N.D.N.Y.", dateFiled: "2025-03-21", docketNumber: "3:25-cv-00321", docket_absolute_url: "/docket/1/doe-v-cornell-university/" },
+      { caseName: "Roe v. Cornell University", court: "District Court, N.D. New York", dateFiled: "2026-06-26T00:00:00-07:00", docket_absolute_url: "/docket/2/roe-v-cornell-university/" },
+      { caseName: "Missing URL", dateFiled: "2026-01-01" },
+    ],
+  });
+
+  it("searches by party name with the shared crime terms and a filing-date window", () => {
+    const url = new URL(courtListenerUrl(["Harvard College", "Harvard University"], "2026-01-01"));
+    expect(url.hostname).toBe("www.courtlistener.com");
+    expect(url.searchParams.get("type")).toBe("r");
+    expect(url.searchParams.get("filed_after")).toBe("2026-01-01");
+    expect(url.searchParams.get("q")).toMatch(/^caseName:\("Harvard College" OR "Harvard University"\) AND \(.*"sexual assault".*stalking.*\)$/);
+  });
+
+  it("parses dockets into leads with court and docket number, skipping incomplete results", () => {
+    const leads = parseCourtListener(api);
+    expect(leads).toHaveLength(2);
+    expect(leads[0]).toMatchObject({
+      url: "https://www.courtlistener.com/docket/1/doe-v-cornell-university/",
+      title: "Doe v. Cornell University (N.D.N.Y., No. 3:25-cv-00321)",
+      court: "N.D.N.Y.",
+    });
+    expect(leads[0].filedAt?.toISOString().slice(0, 10)).toBe("2025-03-21");
+    expect(leads[1].title).toBe("Roe v. Cornell University (District Court, N.D. New York)");
+    expect(isCourtListenerUrl(leads[0].url)).toBe(true);
+    expect(() => parseCourtListener("rate limited")).toThrow(/non-JSON/);
+  });
+
+  it("adds docket leads to the inbox as lawsuit candidates, never as case records", async () => {
+    const { db, close } = await createTestDb();
+    await fixtures(db).college({ slug: "cornell-university", status: "draft" });
+    let requested = "";
+    const result = await runDiscovery({
+      db,
+      sleep: async () => {},
+      now: new Date("2026-10-03T12:00:00Z"),
+      googleNewsDays: 30,
+      fetchText: async (url) => {
+        requested = url;
+        return { status: 200, body: api };
+      },
+      feeds: [],
+      gdeltQueries: [{ collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" }],
+      sources: { gdelt: false, googleNews: false },
+    });
+    expect(new URL(requested).searchParams.get("filed_after")).toBe("2026-09-03");
+    expect(result.bySource["court dockets: Cornell University"]).toEqual({ found: 2, relevant: 2 });
+    const rows = await db.select().from(s.candidateItems);
+    expect(rows.map((r) => [r.publisher, r.suggestedTopic]).sort()).toEqual([
+      ["Federal court docket (District Court, N.D. New York)", "lawsuit"],
+      ["Federal court docket (N.D.N.Y.)", "lawsuit"],
+    ]);
+    expect(await db.select().from(s.cases)).toEqual([]);
+    await close();
+  });
 });

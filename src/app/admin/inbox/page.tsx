@@ -10,6 +10,7 @@ import { candidateStatuses, coverageTopics, type CandidateStatus } from "@/lib/e
 import { coverageTopicLabels } from "@/lib/labels";
 import { sourceTypes } from "@/lib/source-types";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
+import { isCourtListenerUrl } from "@/jobs/discovery/courtlistener";
 import { feeds, gdeltQueries } from "@/jobs/discovery/sources";
 import { acceptCandidateAction, dismissCandidateAction } from "../actions";
 
@@ -116,6 +117,17 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                   <summary className="cursor-pointer font-medium">Accept…</summary>
                   <div className="mt-3">
                     <ActionForm action={acceptCandidateAction.bind(null, c.id)} submitLabel="Accept as draft">
+                      <SelectField
+                        name="mode"
+                        label="Create"
+                        required
+                        defaultValue={isCourtListenerUrl(c.url) ? "source_only" : "coverage"}
+                        options={[
+                          { value: "coverage", label: "Source and coverage entry (shown on the profile)" },
+                          { value: "source_only", label: "Source only (e.g. a court docket to cite in a case)" },
+                        ]}
+                        hint={isCourtListenerUrl(c.url) ? "Court dockets are leads: save the docket as a source, then build the case under Cases and cite it." : undefined}
+                      />
                       <div className="grid gap-4 sm:grid-cols-2">
                         <SelectField
                           name="collegeId"
@@ -152,7 +164,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           name="sourceType"
                           label="Source type"
                           required
-                          defaultValue="reputable_journalism"
+                          defaultValue={isCourtListenerUrl(c.url) ? "court_record" : "reputable_journalism"}
                           options={Object.entries(sourceTypes).map(([value, t]) => ({ value, label: t.label }))}
                         />
                         <TextField name="publisher" label="Publisher" required defaultValue={c.publisher} />
@@ -177,8 +189,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                       </div>
                       <TextArea
                         name="summary"
-                        label="Neutral summary (shown publicly)"
-                        required
+                        label="Neutral summary (shown publicly; not needed for source only)"
                         rows={2}
                         hint="One sentence in your words, attributed where needed: e.g. “Reports that the district attorney reopened an investigation.” Do not name victims."
                       />
