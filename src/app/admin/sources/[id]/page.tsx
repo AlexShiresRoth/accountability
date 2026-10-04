@@ -17,7 +17,9 @@ export default async function SourceAdmin({ params, searchParams }: PageProps<"/
   const data = await getSource(db, id);
   if (!data) notFound();
   const { source, usage } = data;
-  const accepted = (await searchParams).accepted === "1";
+  const acceptedParam = (await searchParams).accepted;
+  const accepted = acceptedParam === "1" || acceptedParam === "source";
+  const sourceOnly = acceptedParam === "source";
 
   return (
     <div className="space-y-8">
@@ -33,8 +35,9 @@ export default async function SourceAdmin({ params, searchParams }: PageProps<"/
       </div>
       {accepted && (
         <p className="border-l-4 border-ink bg-surface px-4 py-2 text-sm">
-          Accepted from the inbox as a draft source with a draft coverage entry. Check the article, archive it, and verify
-          both before anything is published.
+          {sourceOnly
+            ? "Accepted from the inbox as a draft source. Read the filing or article, archive it, then cite it from a case or record and verify it."
+            : "Accepted from the inbox as a draft source with a draft coverage entry. Check the article, archive it, and verify both before anything is published."}
         </p>
       )}
       <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">

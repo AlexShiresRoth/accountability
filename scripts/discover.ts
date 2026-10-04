@@ -1,5 +1,5 @@
 // Runs the discovery job once and prints what it found.
-// Usage: pnpm discover [--timespan 3months] [--days 90] [--no-gdelt]
+// Usage: pnpm discover [--timespan 3months] [--days 90] [--court-days 730] [--no-gdelt] [--no-courts]
 // Development database only until the scheduled job is deployed (step 7).
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -17,12 +17,15 @@ async function main() {
   const d = process.argv.indexOf("--days");
   const days = d > -1 ? Number(process.argv[d + 1]) : 2;
   const gdelt = !process.argv.includes("--no-gdelt");
+  const courtDockets = !process.argv.includes("--no-courts");
+  const cd = process.argv.indexOf("--court-days");
+  const courtDays = cd > -1 ? Number(process.argv[cd + 1]) : undefined;
   console.log(`Discovery → development database (${variable}), GDELT ${gdelt ? timespan : "off"}, Google News ${days}d\n`);
 
   const client = createPgClient(url, { max: 1 });
   const db = drizzle(client, { schema: s }) as unknown as Database;
   try {
-    const result = await runDiscovery({ db, gdeltTimespan: timespan, googleNewsDays: days, sources: { gdelt } });
+    const result = await runDiscovery({ db, gdeltTimespan: timespan, googleNewsDays: days, sources: { gdelt, courtDockets }, courtDays });
     console.table(result.bySource);
     console.log(`Unique candidates: ${result.found}, new: ${result.created}, duplicate headlines skipped: ${result.duplicateHeadlines}, re-filed by headline: ${result.refiled}, dropped (headline must name school): ${result.droppedNoHeadlineName}`);
     if (result.errors.length) console.log(`\nErrors:\n- ${result.errors.join("\n- ")}`);

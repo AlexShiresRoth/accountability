@@ -10,7 +10,7 @@ import { PUBLIC_STATUSES, type VerificationStatus } from "@/lib/enums";
 
 type Reviewed = PgTable & { id: AnyPgColumn; status: AnyPgColumn };
 
-/** Tables managed by the admin. Cases and case events are added in step 5b-2. */
+/** Tables managed by the admin. */
 export const reviewTables = {
   source: { table: s.sources, label: "Source", citation: null },
   college: { table: s.colleges, label: "College", citation: s.citations.collegeId },
@@ -23,6 +23,8 @@ export const reviewTables = {
   student_resource: { table: s.studentResources, label: "Student resource", citation: s.citations.studentResourceId },
   college_coverage: { table: s.collegeCoverage, label: "Coverage", citation: null },
   correction: { table: s.corrections, label: "Correction", citation: s.citations.correctionId },
+  case: { table: s.cases, label: "Case", citation: s.citations.caseId },
+  case_event: { table: s.caseEvents, label: "Case event", citation: s.citations.caseEventId },
 } satisfies Record<string, { table: Reviewed; label: string; citation: AnyPgColumn | null }>;
 
 export type ReviewTableKey = keyof typeof reviewTables;
@@ -64,6 +66,24 @@ export async function verificationProblems(db: Database, key: ReviewTableKey, id
         .innerJoin(s.cleryReports, eq(table.cleryReportId, s.cleryReports.id))
         .where(eq(table.id, id));
       return row?.reportStatus === "verified" ? [] : ["Verify the Clery report first."];
+    }
+    case "case": {
+      // A case is the highest-risk content on the site: require the editorial justification, at least one
+      // institution, and at least one verified (cited) event before it can be published.
+      const problems: string[] = [];
+      const [row] = await db.select({ justification: s.cases.publicationJustification }).from(s.cases).where(eq(s.cases.id, id));
+      if (!row?.justification?.trim()) problems.push("Record the editorial justification for publishing this case.");
+      const [{ colleges }] = await db
+        .select({ colleges: sql<number>`count(*)::int` })
+        .from(s.caseColleges)
+        .where(eq(s.caseColleges.caseId, id));
+      if (!colleges) problems.push("Link the case to at least one institution.");
+      const [{ events }] = await db
+        .select({ events: sql<number>`count(*)::int` })
+        .from(s.caseEvents)
+        .where(and(eq(s.caseEvents.caseId, id), eq(s.caseEvents.status, "verified")));
+      if (!events) problems.push("Verify at least one event (each event needs a citation to a verified source).");
+      return problems;
     }
     case "college_coverage": {
       // Coverage is evidenced by the article itself. Case-scoped coverage also stays hidden publicly until

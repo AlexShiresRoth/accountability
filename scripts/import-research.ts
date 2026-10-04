@@ -1,6 +1,7 @@
 // Imports a transcribed research bundle into the DEVELOPMENT database as pending_review.
 // Usage: pnpm import-research cornell-university
 import { drizzle } from "drizzle-orm/postgres-js";
+import { cornellChiPhi } from "../research/cornell-chi-phi";
 import { cornellInstitutional } from "../research/cornell-institutional";
 import { cornellAsr } from "../research/cornell-university";
 import { createPgClient } from "../src/db/client";
@@ -9,7 +10,7 @@ import { resolveDatabaseUrl } from "../src/db/target";
 import type { Database } from "../src/db/types";
 import { importResearchBundle, type ResearchBundle } from "../src/lib/admin/research-bundle";
 
-const bundles: Record<string, ResearchBundle> = { "cornell-university": cornellAsr, "cornell-institutional": cornellInstitutional };
+const bundles: Record<string, ResearchBundle> = { "cornell-university": cornellAsr, "cornell-institutional": cornellInstitutional, "cornell-chi-phi": cornellChiPhi };
 const ACTOR = "Claude (transcription)";
 
 async function main() {

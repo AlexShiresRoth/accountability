@@ -10,6 +10,8 @@ import type { CleryGeography, Offense } from "@/lib/enums";
 import {
   addCitation,
   collegeRecordTables,
+  createCase,
+  createCaseEvent,
   createCollegeRecord,
   createFootnote,
   createReport,
@@ -20,7 +22,7 @@ import {
   type CollegeRecordKey,
   type GridEntry,
 } from "./records";
-import type { SourceInput } from "./validation";
+import type { CaseInput, EventInput, SourceInput } from "./validation";
 import { changeStatus, getStatus, type ReviewTableKey } from "./workflow";
 
 export type BundleCitation = { source: string; pinpoint?: string; excerpt?: string; claim?: string };
@@ -51,6 +53,19 @@ export type ResearchBundle = {
   }[];
   /** Institutional records (responses, policies, resources, timeline entries…), each with its citations. */
   records?: BundleRecord[];
+  /** Documented cases with their events. Institutions are given by slug. */
+  cases?: BundleCase[];
+};
+
+export type BundleCase = Omit<CaseInput, "collegeIds"> & {
+  collegeSlugs: string[];
+  citations: BundleCitation[];
+  events: (Omit<EventInput, "supersedesEventId"> & {
+    /** Local name, so a later event can say it updates this one. */
+    ref: string;
+    supersedes?: string;
+    citations: BundleCitation[];
+  })[];
 };
 
 export type BundleRecord = {
@@ -88,8 +103,15 @@ export function validateBundle(bundle: ResearchBundle): string[] {
   for (const r of bundle.records ?? []) {
     if (r.key !== "college_coverage" && !r.citations.length) problems.push(`${r.key} record has no citation.`);
   }
-  for (const ref of refs) if (!bundle.sources[ref.source]) problems.push(`Unknown source "${ref.source}".`);
-
+  for (const c of bundle.cases ?? []) {
+    refs.push(...c.citations, ...c.events.flatMap((e) => e.citations));
+    const seen = new Set<string>();
+    for (const e of c.events) {
+      if (!e.citations.length) problems.push(`Case ${c.slug}: event ${e.ref} has no citation.`);
+      if (e.supersedes && !seen.has(e.supersedes)) problems.push(`Case ${c.slug}: event ${e.ref} updates "${e.supersedes}", which must be listed earlier.`);
+      seen.add(e.ref);
+    }
+  }
   for (const r of bundle.reports) {
     const label = `${r.reportYear} report`;
     if (r.years.length !== 3 || r.years.some((y, i) => y !== r.reportYear - 3 + i)) {
@@ -112,6 +134,7 @@ export function validateBundle(bundle: ResearchBundle): string[] {
       });
     }
   }
+  for (const ref of refs) if (!bundle.sources[ref.source]) problems.push(`Unknown source "${ref.source}".`);
   return problems;
 }
 
@@ -151,6 +174,8 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
     policy: s.citations.policyId,
     student_resource: s.citations.studentResourceId,
     correction: s.citations.correctionId,
+    case: s.citations.caseId,
+    case_event: s.citations.caseEventId,
   } as const;
   /** Adds a citation unless the same one (record, source, page, excerpt) is already there. */
   const cite = async (key: keyof typeof citationColumns, recordId: string, c: BundleCitation) => {
@@ -243,6 +268,37 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
     if (r.key !== "college_coverage") for (const c of r.citations) await cite(r.key, created.value, c);
     queue(r.key, created.value);
     log.push(`${r.key} "${value.slice(0, 50)}": created.`);
+  }
+
+  // Cases: skip one whose slug already exists (edit it in the admin instead).
+  for (const c of bundle.cases ?? []) {
+    const [existing] = await db.select({ id: s.cases.id }).from(s.cases).where(eq(s.cases.slug, c.slug));
+    if (existing) {
+      log.push(`Case "${c.slug}": already exists, skipped (edit it in the admin).`);
+      continue;
+    }
+    const collegeIds: string[] = [];
+    for (const slug of c.collegeSlugs) {
+      const [row] = await db.select({ id: s.colleges.id }).from(s.colleges).where(eq(s.colleges.slug, slug));
+      if (!row) throw new Error(`Case ${c.slug}: college "${slug}" not found.`);
+      collegeIds.push(row.id);
+    }
+    const { collegeSlugs: _slugs, citations, events, ...fields } = c;
+    const created = await createCase(db, { ...fields, collegeIds }, actor);
+    if (!created.ok) throw new Error(created.problems.join(" "));
+    const caseId = created.value;
+    for (const cit of citations) await cite("case", caseId, cit);
+    queue("case", caseId);
+
+    const eventIds = new Map<string, string>();
+    for (const { ref, supersedes, citations: eventCitations, ...input } of events) {
+      const ev = await createCaseEvent(db, caseId, { ...input, supersedesEventId: supersedes ? eventIds.get(supersedes)! : null }, actor);
+      if (!ev.ok) throw new Error(`Case ${c.slug}, event ${ref}: ${ev.problems.join(" ")}`);
+      eventIds.set(ref, ev.value);
+      for (const cit of eventCitations) await cite("case_event", ev.value, cit);
+      queue("case_event", ev.value);
+    }
+    log.push(`Case "${c.slug}": created with ${events.length} events.`);
   }
 
   // Hand everything to human review. Only drafts move; anything further along is left as it is.

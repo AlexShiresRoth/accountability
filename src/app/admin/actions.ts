@@ -11,8 +11,13 @@ import { acceptCandidate, dismissCandidate } from "@/lib/admin/inbox";
 import {
   addCitation,
   createCollege,
+  createCase,
+  createCaseCorrection,
+  createCaseEvent,
   createCollegeRecord,
   isCollegeRecordKey,
+  updateCase,
+  updateCaseEvent,
   updateCollegeRecord,
   type CollegeRecordInput,
   type CollegeRecordKey,
@@ -42,10 +47,12 @@ import {
 import {
   acceptCandidateSchema,
   actionSchema,
+  caseSchema,
   citationSchema,
   collegeSchema,
   correctionSchema,
   coverageSchema,
+  eventSchema,
   policySchema,
   resourceSchema,
   responseSchema,
@@ -262,7 +269,8 @@ export async function acceptCandidateAction(id: string, _prev: FormState, form: 
   if (!parsed.success) return { problems: problemsOf(parsed.error) };
   const result = await acceptCandidate(db, id, parsed.data, name);
   if (!result.ok) return { problems: result.problems };
-  redirect(`/admin/sources/${result.value.sourceId}?notice=candidate-accepted&accepted=1`);
+  const sourceOnly = result.value.coverageId === null;
+  redirect(`/admin/sources/${result.value.sourceId}?notice=${sourceOnly ? "candidate-source" : "candidate-accepted"}&accepted=${sourceOnly ? "source" : "1"}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -300,4 +308,54 @@ export async function updateCollegeRecordAction(key: string, id: string, _prev: 
   const parsed = parseRecord(key, form);
   if (!parsed.success) return { problems: problemsOf(parsed.error) };
   return toState(await updateCollegeRecord(db, key, id, parsed.data, name), "Saved.");
+}
+
+// ---------------------------------------------------------------------------
+// Cases
+// ---------------------------------------------------------------------------
+
+function parseCase(form: FormData) {
+  const collegeIds = form.getAll("collegeIds").filter((v): v is string => typeof v === "string");
+  return caseSchema.safeParse({ ...formValues(form), collegeIds });
+}
+
+export async function createCaseAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const parsed = parseCase(form);
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  const result = await createCase(db, parsed.data, name);
+  if (!result.ok) return { problems: result.problems };
+  redirect(`/admin/cases/${result.value}?notice=case-created`);
+}
+
+export async function updateCaseAction(id: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const parsed = parseCase(form);
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  return toState(await updateCase(db, id, parsed.data, name), "Saved.");
+}
+
+export async function createCaseEventAction(caseId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const parsed = eventSchema.safeParse(formValues(form));
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  const result = await createCaseEvent(db, caseId, parsed.data, name);
+  if (!result.ok) return { problems: result.problems };
+  redirect(`/admin/cases/${caseId}/events/${result.value}?notice=record-created`);
+}
+
+export async function updateCaseEventAction(id: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const parsed = eventSchema.safeParse(formValues(form));
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  return toState(await updateCaseEvent(db, id, parsed.data, name), "Saved.");
+}
+
+export async function createCaseCorrectionAction(caseId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const parsed = correctionSchema.safeParse(formValues(form));
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  const result = await createCaseCorrection(db, caseId, parsed.data, name);
+  if (!result.ok) return { problems: result.problems };
+  redirect(`/admin/records/correction/${result.value}?notice=record-created`);
 }

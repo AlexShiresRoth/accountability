@@ -71,14 +71,14 @@ export async function dismissCandidate(db: Database, id: string, actor: string):
   return updated.length ? { ok: true, value: undefined } : { ok: false, problems: ["This candidate has already been triaged."] };
 }
 
-/** Creates a draft source and draft coverage entry from a candidate, then marks it accepted. */
+/** Creates a draft source (and, unless source-only, a draft coverage entry) from a candidate, then marks it accepted. */
 export async function acceptCandidate(
   db: Database,
   id: string,
   input: AcceptCandidateInput,
   actor: string,
   today = new Date().toISOString().slice(0, 10),
-): Promise<MutationResult<{ sourceId: string; coverageId: string }>> {
+): Promise<MutationResult<{ sourceId: string; coverageId: string | null }>> {
   return db.transaction(async (tx) => {
     const [candidate] = await tx.select().from(s.candidateItems).where(eq(s.candidateItems.id, id)).for("update");
     if (!candidate) return { ok: false as const, problems: ["Candidate not found."] };
@@ -107,25 +107,30 @@ export async function acceptCandidate(
       })
       .returning({ id: s.sources.id });
 
-    const [coverage] = await tx
-      .insert(s.collegeCoverage)
-      .values({
-        collegeId: input.collegeId,
-        sourceId: source.id,
-        scope: input.scope,
-        caseId: input.scope === "case" ? input.caseId : null,
-        topic: input.topic,
-        summary: input.summary,
-        status: "draft",
-        createdBy: actor,
-      })
-      .returning({ id: s.collegeCoverage.id });
+    const coverage =
+      input.mode === "source_only"
+        ? null
+        : (
+            await tx
+              .insert(s.collegeCoverage)
+              .values({
+                collegeId: input.collegeId,
+                sourceId: source.id,
+                scope: input.scope,
+                caseId: input.scope === "case" ? input.caseId : null,
+                topic: input.topic,
+                summary: input.summary,
+                status: "draft",
+                createdBy: actor,
+              })
+              .returning({ id: s.collegeCoverage.id })
+          )[0];
 
     await tx
       .update(s.candidateItems)
       .set({ status: "accepted", acceptedSourceId: source.id, reviewedBy: actor, reviewedAt: new Date() })
       .where(eq(s.candidateItems.id, id));
 
-    return { ok: true as const, value: { sourceId: source.id, coverageId: coverage.id } };
+    return { ok: true as const, value: { sourceId: source.id, coverageId: coverage?.id ?? null } };
   });
 }
