@@ -1,7 +1,7 @@
 import "server-only";
 // Admin reads. Unlike the public layer, these return records in every status.
 
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
@@ -10,6 +10,23 @@ import { collegeRecordTables, type CollegeRecordKey } from "./records";
 import { reviewTables, type ReviewTableKey } from "./workflow";
 
 export type StatusCounts = Record<VerificationStatus, number>;
+
+/** Most recent discovery runs, newest first, for the dashboard. */
+export async function recentDiscoveryRuns(db: Database, limit = 8) {
+  const runs = await db
+    .select()
+    .from(s.ingestionRuns)
+    .where(eq(s.ingestionRuns.job, "discovery"))
+    .orderBy(desc(s.ingestionRuns.startedAt))
+    .limit(limit);
+  const [lastScheduled] = await db
+    .select({ startedAt: s.ingestionRuns.startedAt, outcome: s.ingestionRuns.outcome })
+    .from(s.ingestionRuns)
+    .where(and(eq(s.ingestionRuns.job, "discovery"), eq(s.ingestionRuns.triggeredBy, "cron")))
+    .orderBy(desc(s.ingestionRuns.startedAt))
+    .limit(1);
+  return { runs, lastScheduled: lastScheduled ?? null, checkedAt: Date.now() };
+}
 
 export async function dashboard(db: Database) {
   const counts = {} as Record<ReviewTableKey, Partial<StatusCounts>>;

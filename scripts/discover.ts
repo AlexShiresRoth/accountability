@@ -25,8 +25,16 @@ async function main() {
   const client = createPgClient(url, { max: 1 });
   const db = drizzle(client, { schema: s }) as unknown as Database;
   try {
-    const result = await runDiscovery({ db, gdeltTimespan: timespan, googleNewsDays: days, sources: { gdelt, courtDockets }, courtDays });
+    const result = await runDiscovery({
+      db,
+      gdeltTimespan: timespan,
+      googleNewsDays: days,
+      sources: { gdelt, courtDockets },
+      courtDays,
+      triggeredBy: "cli",
+    });
     console.table(result.bySource);
+    console.log(`Outcome: ${result.outcome} in ${(result.durationMs / 1000).toFixed(1)}s`);
     console.log(`Unique candidates: ${result.found}, new: ${result.created}, duplicate headlines skipped: ${result.duplicateHeadlines}, re-filed by headline: ${result.refiled}, dropped (headline must name school): ${result.droppedNoHeadlineName}`);
     if (result.errors.length) console.log(`\nErrors:\n- ${result.errors.join("\n- ")}`);
 
