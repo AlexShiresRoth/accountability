@@ -64,6 +64,9 @@ Deferred until the inbox exists, since candidates are only useful once researche
       under concurrent queries with postgres.js (see `src/db/client.ts`). Session-pooler connections are limited, so set a
       small per-instance `max` on Vercel and confirm the pool size under load before launch. Dev hit the 15-client
       session pool limit (`EMAXCONNSESSION`) until clients were capped at 4 with a 20 s idle timeout.
+      Production hit the same limit on 2026-10-05 (several Vercel instances × 4 connections); on Vercel each instance
+      now keeps 1 connection with a 5 s idle timeout (`poolDefaults` in `src/db/client.ts`). On Supabase Pro, the
+      session pool size can also be raised in Database settings.
 - [x] Re-tested GDELT from Vercel (first cron run, 2026-10-05): every request failed with "fetch failed" (no
       connection), while locally it still answers HTTP 429 to every request. Scheduled runs now skip GDELT unless
       `DISCOVERY_GDELT=on`; a GDELT failure stops GDELT for the rest of the run; network errors log their cause.

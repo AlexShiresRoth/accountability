@@ -44,3 +44,11 @@ describe("database target", () => {
     expect(() => resolveDbTarget(env({ DB_TARGET: "staging" }))).toThrow();
   });
 });
+
+describe("connection pool size", () => {
+  it("uses one short-lived connection per Vercel instance, and a few locally", async () => {
+    const { poolDefaults } = await import("./client");
+    expect(poolDefaults(env({ VERCEL: "1" }))).toEqual({ max: 1, idle_timeout: 5 });
+    expect(poolDefaults(env({}))).toEqual({ max: 4, idle_timeout: 20 });
+  });
+});
