@@ -4,14 +4,16 @@ import { SourceDetails } from "@/components/cite";
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
 import { listPublicSources } from "@/lib/public";
+import { pageMetadata } from "@/lib/seo";
 import { sourceTypes, type SourceType } from "@/lib/source-types";
 
 export const revalidate = 3600;
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Sources",
   description: "The types of documents this project relies on, and how citations connect each claim to its evidence.",
-};
+  path: "/sources",
+});
 
 export default async function SourcesPage() {
   const sources = await listPublicSources();

@@ -4,12 +4,16 @@ import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
 import { PlaceholderNotice } from "@/components/notice";
 import { lessons } from "@/content/lessons";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Prevention",
   description:
     "Short, scenario-based lessons on consent, bystander intervention, coercion, healthy relationships, and peer culture.",
-};
+  path: "/learn",
+  // Out of search until at least one lesson has completed editorial review.
+  noindex: !lessons.some((l) => l.status === "reviewed"),
+});
 
 export default function LearnPage() {
   return (

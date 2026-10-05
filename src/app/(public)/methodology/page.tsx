@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Methodology",
   description:
     "How this project sources, verifies, and presents campus crime statistics, institutional responses, and documented cases, and the limits of that data.",
-};
+  path: "/methodology",
+});
 
 const CFR_668_46 = "https://www.law.cornell.edu/cfr/text/34/668.46";
 
