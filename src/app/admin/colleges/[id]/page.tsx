@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/action-form";
 import { CollegeFields } from "@/components/admin/college-fields";
-import { PublishedEditWarning, SelectField, TextField } from "@/components/admin/fields";
+import { PublishedEditWarning, TextField } from "@/components/admin/fields";
+import { SourcePicker } from "@/components/admin/source-picker";
+import { sourceScopeFor } from "@/components/admin/source-scope";
 import { CollegeRecordsSection } from "@/components/admin/college-records";
 import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
 import { StatusBadge } from "@/components/admin/status";
@@ -19,6 +21,7 @@ export default async function CollegeAdmin({ params }: PageProps<"/admin/college
   if (!data) notFound();
   const { college, reports } = data;
   const sources = await sourceOptions(db);
+  const sourceScope = await sourceScopeFor([college.id], sources);
   const nextYear = (reports[0]?.reportYear ?? new Date().getFullYear() - 1) + 1;
 
   return (
@@ -74,12 +77,12 @@ export default async function CollegeAdmin({ params }: PageProps<"/admin/college
                 <TextField name="reportYear" label="Report year" type="number" required defaultValue={nextYear} hint="The year published. It covers the three prior calendar years." />
                 <TextField name="title" label="Title" required defaultValue={`${nextYear} Annual Security Report`} />
               </div>
-              <SelectField
+              <SourcePicker
                 name="sourceId"
                 label="Source document"
                 required
-                placeholder="Choose the report's source…"
-                options={sources.map((s) => ({ value: s.id, label: `${s.title} (${s.publisher})` }))}
+                sources={sources}
+                scope={sourceScope}
                 hint="Create the source (with its URL and archived copy) under Sources first."
               />
             </ActionForm>

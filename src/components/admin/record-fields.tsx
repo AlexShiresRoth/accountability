@@ -19,9 +19,13 @@ import {
   responseTopicLabels,
 } from "@/lib/labels";
 import { SelectField, TextArea, TextField } from "./fields";
+import { SourcePicker } from "./source-picker";
+import type { SourceOption, SourceScope } from "@/lib/source-search";
 
 export type RecordOptions = {
-  sources: { id: string; title: string; publisher: string }[];
+  sources: SourceOption[];
+  /** Offers this college's sources first in the source picker. */
+  sourceScope?: SourceScope;
   cases: { id: string; title: string }[];
   actions: { id: string; title: string; actionDate: string }[];
 };
@@ -140,13 +144,13 @@ export function RecordFields({ recordKey, values = {}, options }: { recordKey: C
       return (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <SelectField
+            <SourcePicker
               name="sourceId"
               label="Article (source)"
               required
               defaultValue={v("sourceId")}
-              placeholder="Choose the article's source record…"
-              options={options.sources.map((s) => ({ value: s.id, label: `${s.title} (${s.publisher})` }))}
+              sources={options.sources}
+              scope={options.sourceScope}
               hint="Create the source first under Sources, or accept it from the inbox."
             />
           </div>

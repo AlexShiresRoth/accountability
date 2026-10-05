@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/action-form";
-import { PublishedEditWarning, SelectField, TextArea, TextField } from "@/components/admin/fields";
+import { PublishedEditWarning, TextArea, TextField } from "@/components/admin/fields";
+import { SourcePicker } from "@/components/admin/source-picker";
+import { sourceScopeFor } from "@/components/admin/source-scope";
 import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
 import { StatusBadge, statusLabels } from "@/components/admin/status";
 import { StatusSelect } from "@/components/admin/status-select";
@@ -36,6 +38,7 @@ export default async function ReportAdmin({ params }: PageProps<"/admin/reports/
   if (!data) notFound();
   const { report, college, source, statistics, footnotes, links } = data;
   const sources = await sourceOptions(db);
+  const sourceScope = await sourceScopeFor([college.id], sources);
 
   const byKey = new Map(statistics.map((st) => [cellKey(st.calendarYear, st.offense, st.geography), st]));
   const years = [...new Set([report.reportYear - 3, report.reportYear - 2, report.reportYear - 1, ...statistics.map((st) => st.calendarYear)])].sort();
@@ -67,13 +70,7 @@ export default async function ReportAdmin({ params }: PageProps<"/admin/reports/
               <TextField name="reportYear" label="Report year" type="number" required defaultValue={report.reportYear} />
               <TextField name="title" label="Title" required defaultValue={report.title} />
             </div>
-            <SelectField
-              name="sourceId"
-              label="Source document"
-              required
-              defaultValue={source.id}
-              options={sources.map((s) => ({ value: s.id, label: `${s.title} (${s.publisher})` }))}
-            />
+            <SourcePicker name="sourceId" label="Source document" required defaultValue={source.id} sources={sources} scope={sourceScope} />
           </ActionForm>
           <CitationsPanel recordKey="clery_report" recordId={report.id} />
         </div>
