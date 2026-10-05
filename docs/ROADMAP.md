@@ -91,7 +91,9 @@ Setup, architecture, editorial principles, and how verified data is added.
 - [x] Columbia: 2026 and 2025 ASRs (Morningside campus table) in `research/columbia-university.ts`; institutional
       record (7 responses, 2 policies, 12 resources) in `research/columbia-institutional.ts`. Imported to dev as
       `pending_review`.
-- [ ] Verify the Harvard and Columbia transcriptions and institutional records in the admin, then the college records.
+- [x] Harvard and Columbia bundles imported into production as `pending_review` (2026-10-05) with
+      `DB_TARGET=production pnpm import-research <bundle> --production`.
+- [ ] Verify the Harvard and Columbia transcriptions and institutional records in the production admin, then the college records.
 - [ ] Multi-campus institutions: Cornell publishes separate reports for Ithaca, Cornell Tech, and Weill Cornell Medicine,
       but the schema allows one report per college per year. Decide whether to add a campus dimension.
 - [ ] Discovery gaps: Cornell Chronicle, statements.cornell.edu, The Harvard Crimson, Columbia Daily
