@@ -70,6 +70,11 @@ Deferred until the inbox exists, since candidates are only useful once researche
 ### 8. README
 Setup, architecture, editorial principles, and how verified data is added.
 
+## Public roadmap
+
+`/roadmap` is generated from `src/content/roadmap.ts`. Update it when an item starts, ships, or changes; the home
+page's work-in-progress note links to it and lists the universities still in preparation.
+
 ## Research backlog
 
 - [x] Cornell Annual Security Reports 2025 and 2026 (Ithaca campus) transcribed in `research/cornell-university.ts`

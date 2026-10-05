@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Container } from "@/components/container";
 import { DataQualityNotes } from "@/components/data-quality-note";
 import { JsonLd } from "@/components/json-ld";
+import { WorkInProgressNote } from "@/components/notice";
 import { searchColleges } from "@/lib/public";
 import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
@@ -45,6 +46,9 @@ export default async function HomePage() {
       <JsonLd data={homeStructuredData()} />
       <section className="border-b border-rule">
         <Container className="py-16 sm:py-24">
+          <div className="mb-10">
+            <WorkInProgressNote inPreparation={inPreparation.map((i) => i.name)} />
+          </div>
           <h1 className="max-w-3xl text-4xl sm:text-6xl">Look beyond the rankings.</h1>
           <p className="mt-6 max-w-[52ch] text-xl text-ink-muted sm:text-2xl">
             Understand how universities report, prevent, and respond to violence against women.
@@ -96,7 +100,8 @@ export default async function HomePage() {
             Universities
           </h2>
           <p className="mt-3 max-w-[60ch] text-ink-muted">
-            Coverage begins with three institutions and will expand as profiles are researched and verified.
+            Coverage begins with three institutions and will expand as profiles are researched and verified.{" "}
+            <Link href="/roadmap">What’s next</Link>
           </p>
           <div className="mt-8">
             <CollegeList colleges={published} inPreparation={inPreparation.map((i) => i.name)} />
