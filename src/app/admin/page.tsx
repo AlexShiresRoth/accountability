@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { DiscoveryRuns } from "@/components/admin/discovery-runs";
 import { StatusBadge, statusLabels } from "@/components/admin/status";
 import { db } from "@/db";
-import { dashboard } from "@/lib/admin/queries";
+import { dashboard, recentDiscoveryRuns } from "@/lib/admin/queries";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { reviewTables, type ReviewTableKey } from "@/lib/admin/workflow";
 import { verificationStatuses } from "@/lib/enums";
@@ -10,7 +11,7 @@ export const metadata = { title: "Dashboard" };
 
 export default async function AdminDashboard() {
   await requireResearcherPage();
-  const { counts, inbox, recent, awaiting } = await dashboard(db);
+  const [{ counts, inbox, recent, awaiting }, runs] = await Promise.all([dashboard(db), recentDiscoveryRuns(db)]);
 
   return (
     <div className="space-y-10">
@@ -48,6 +49,8 @@ export default async function AdminDashboard() {
           </ul>
         )}
       </section>
+
+      <DiscoveryRuns data={runs} />
 
       <section aria-labelledby="counts">
         <h2 id="counts" className="text-xl">

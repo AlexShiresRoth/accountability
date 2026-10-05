@@ -48,10 +48,14 @@ justification, an institution, and a verified, cited event before it can be veri
 ### 7. Deployment and scheduled discovery
 Deferred until the inbox exists, since candidates are only useful once researchers can triage them.
 
-- [ ] Route handler `src/app/api/cron/discover/route.ts`: requires `Authorization: Bearer $CRON_SECRET`,
-      calls `runDiscovery()`, returns the run summary, raised `maxDuration`.
-- [ ] `vercel.json` cron entry (e.g. `0 11 * * *`). Hobby plan: at most once per day with imprecise timing;
+- [x] Route handler `src/app/api/discovery/route.ts`: requires `Authorization: Bearer $CRON_SECRET`,
+      calls `runDiscovery()`, returns the run summary, `maxDuration = 300` (a run with GDELT rate-limited took 130 s).
+- [x] `vercel.json` cron, daily at 10:00 UTC. Hobby plan: at most once per day with imprecise timing;
       more frequent runs need Pro or a GitHub Actions schedule calling the same route.
+- [x] Run logging: JSON log lines (`run.started`, `source.done`, `source.failed`, `run.finished`, `run.failed`) in the
+      Vercel logs; each `ingestion_run` records trigger, outcome (ok / partial / failed), duration and a per-source summary
+      (migration 0003); the admin dashboard lists recent runs and warns when no scheduled run has happened in 26 h.
+- [x] Migration 0003 applied to production (2026-10-04).
 - [ ] Vercel env vars: `CRON_SECRET`, `DATABASE_URL` (session pooler, port 5432), `MIGRATION_DATABASE_URL`,
       `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, optionally `NEXT_PUBLIC_SITE_URL` once a custom domain is set.
 - [x] Migrate the production database, schema only (2026-10-04). Non-demo dev data was then copied to production
@@ -61,7 +65,7 @@ Deferred until the inbox exists, since candidates are only useful once researche
       small per-instance `max` on Vercel and confirm the pool size under load before launch. Dev hit the 15-client
       session pool limit (`EMAXCONNSESSION`) until clients were capped at 4 with a 20 s idle timeout.
 - [ ] Re-test GDELT from Vercel. On 2026-09-29 it returned HTTP 429 to every request from the dev network.
-- [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/discover`.
+- [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/discovery`.
 
 ### 8. README
 Setup, architecture, editorial principles, and how verified data is added.

@@ -145,7 +145,7 @@ describe("runDiscovery", () => {
     expect(result.bySource["feed: The Sun"]).toEqual({ found: 3, relevant: 2 });
     expect(result.found).toBe(3); // 2 feed items + 1 new GDELT item (the other duplicates a feed URL)
     expect(result.created).toBe(3);
-    expect(result.errors).toEqual(['College "missing-college" not found; skipped its sources.']);
+    expect(result.errors).toEqual(['college "missing-college": not found; skipped its sources']);
 
     const rows = await db.select().from(s.candidateItems);
     expect(rows.map((r) => r.url).sort()).toEqual(["https://news.example/x", "https://sun.example/a", "https://sun.example/c"]);
@@ -155,6 +155,50 @@ describe("runDiscovery", () => {
     const [run] = await db.select().from(s.ingestionRuns).where(eq(s.ingestionRuns.id, result.runId));
     expect(run.finishedAt).not.toBeNull();
     expect(run.itemsCreated).toBe(3);
+  });
+
+  it("records the outcome, trigger, duration and per-source summary on the run", async () => {
+    const result = await runDiscovery({ ...options(fetchOk), triggeredBy: "test" });
+    const [run] = await db.select().from(s.ingestionRuns).where(eq(s.ingestionRuns.id, result.runId));
+    expect(run.triggeredBy).toBe("test");
+    expect(run.outcome).toBe("partial"); // the missing college is reported as an error
+    expect(result.outcome).toBe("partial");
+    expect(run.durationMs).toBeGreaterThanOrEqual(0);
+    expect(run.summary).toMatchObject({
+      bySource: { "feed: The Sun": { found: 3, relevant: 2 } },
+      errors: ['college "missing-college": not found; skipped its sources'],
+    });
+  });
+
+  it("logs each source and the run as structured events", async () => {
+    const events: { level: string; event: string; fields?: Record<string, unknown> }[] = [];
+    await runDiscovery({ ...options(fetchOk), log: (level, event, fields) => events.push({ level, event, fields }) });
+    expect(events[0].event).toBe("run.started");
+    expect(events).toContainEqual(expect.objectContaining({ level: "warn", event: "source.failed" }));
+    expect(events).toContainEqual(
+      expect.objectContaining({ event: "source.done", fields: expect.objectContaining({ source: "feed: The Sun", found: 3, relevant: 2 }) }),
+    );
+    expect(events.at(-1)).toMatchObject({ level: "warn", event: "run.finished", fields: { outcome: "partial", found: 3, created: 0 } });
+  });
+
+  it("records a run that throws as failed, and re-throws", async () => {
+    const events: string[] = [];
+    const before = await db.select({ id: s.ingestionRuns.id }).from(s.ingestionRuns);
+    await expect(
+      runDiscovery({
+        ...options(fetchOk),
+        sleep: async () => {
+          throw new Error("boom");
+        },
+        log: (_level, event) => events.push(event),
+      }),
+    ).rejects.toThrow("boom");
+    const runs = await db.select().from(s.ingestionRuns);
+    const failed = runs.find((r) => !before.some((b) => b.id === r.id))!;
+    expect(failed.outcome).toBe("failed");
+    expect(failed.finishedAt).not.toBeNull();
+    expect(failed.error).toBe("Run failed: boom");
+    expect(events).toContain("run.failed");
   });
 
   it("does not duplicate candidates on a second run", async () => {

@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -445,6 +446,13 @@ export const ingestionRuns = pgTable("ingestion_run", {
   itemsFound: integer("items_found").notNull().default(0),
   itemsCreated: integer("items_created").notNull().default(0),
   error: text("error"),
+  /** What started the run: "cron" (scheduled), "cli" (pnpm discover), or "test". */
+  triggeredBy: text("triggered_by").notNull().default("cli"),
+  /** "running" until it finishes; "ok", "partial" (some sources failed) or "failed" (the run itself errored). */
+  outcome: text("outcome").notNull().default("running"),
+  durationMs: integer("duration_ms"),
+  /** Per-source counts and filter totals; see RunSummary in src/jobs/discovery/run.ts. */
+  summary: jsonb("summary"),
 }).enableRLS();
 
 /**
