@@ -1,16 +1,28 @@
 // Imports a transcribed research bundle into the DEVELOPMENT database as pending_review.
 // Usage: pnpm import-research cornell-university
 import { drizzle } from "drizzle-orm/postgres-js";
+import { columbiaInstitutional } from "../research/columbia-institutional";
+import { columbiaAsr } from "../research/columbia-university";
 import { cornellChiPhi } from "../research/cornell-chi-phi";
 import { cornellInstitutional } from "../research/cornell-institutional";
 import { cornellAsr } from "../research/cornell-university";
+import { harvardInstitutional } from "../research/harvard-institutional";
+import { harvardAsr } from "../research/harvard-university";
 import { createPgClient } from "../src/db/client";
 import * as s from "../src/db/schema";
 import { resolveDatabaseUrl } from "../src/db/target";
 import type { Database } from "../src/db/types";
 import { importResearchBundle, type ResearchBundle } from "../src/lib/admin/research-bundle";
 
-const bundles: Record<string, ResearchBundle> = { "cornell-university": cornellAsr, "cornell-institutional": cornellInstitutional, "cornell-chi-phi": cornellChiPhi };
+const bundles: Record<string, ResearchBundle> = {
+  "cornell-university": cornellAsr,
+  "cornell-institutional": cornellInstitutional,
+  "cornell-chi-phi": cornellChiPhi,
+  "columbia-university": columbiaAsr,
+  "columbia-institutional": columbiaInstitutional,
+  "harvard-university": harvardAsr,
+  "harvard-institutional": harvardInstitutional,
+};
 const ACTOR = "Claude (transcription)";
 
 async function main() {

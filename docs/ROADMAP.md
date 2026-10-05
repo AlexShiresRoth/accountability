@@ -82,10 +82,22 @@ Setup, architecture, editorial principles, and how verified data is added.
 - [ ] Cornell follow-up research: Policy 6.4 title/effective date and current procedures, and the Office of Civil
       Rights statistical summaries (officeofcivilrights.cornell.edu blocks automated retrieval; needs a browser and an
       archived copy).
+- [x] Harvard: 2025 and 2024 ASRs (Cambridge campus table) in `research/harvard-university.ts`; institutional
+      record (7 responses, 3 policies, 17 resources) in `research/harvard-institutional.ts`. Imported to dev as
+      `pending_review`.
+- [ ] Harvard 2026 ASR (released ~2026-10-01): hupd.harvard.edu blocks automated retrieval and no archived copy
+      exists yet. Download it in a browser, then add it to `research/harvard-university.ts`.
+- [ ] Harvard: confirm from the Cambridge Clery geography map (2025 ASR p. 82) whether Allston is included.
+- [x] Columbia: 2026 and 2025 ASRs (Morningside campus table) in `research/columbia-university.ts`; institutional
+      record (7 responses, 2 policies, 12 resources) in `research/columbia-institutional.ts`. Imported to dev as
+      `pending_review`.
+- [ ] Verify the Harvard and Columbia transcriptions and institutional records in the admin, then the college records.
 - [ ] Multi-campus institutions: Cornell publishes separate reports for Ithaca, Cornell Tech, and Weill Cornell Medicine,
       but the schema allows one report per college per year. Decide whether to add a campus dimension.
 - [ ] Discovery gaps: Cornell Chronicle, statements.cornell.edu, The Harvard Crimson, Columbia Daily
-      Spectator, Columbia News (see `src/jobs/discovery/sources.ts`).
+      Spectator, Columbia News (see `src/jobs/discovery/sources.ts`). No public RSS found for the Crimson or the
+      Spectator (their stories arrive via Google News). Bwog added for Columbia; the Harvard Gazette feed was dropped
+      (0 of 50 posts on topic). Harvard search results must now name Harvard in the headline, like Columbia.
 - [ ] Cornell candidates from the first discovery run (developing Chi Phi case): triage in the inbox and
       verify against primary records before any case record is created.
 

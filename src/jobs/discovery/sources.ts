@@ -29,7 +29,10 @@ export type CollegeQuery = {
 
 export const feeds: FeedSource[] = [
   { url: "https://www.cornellsun.com/plugin/feeds/all.xml", publisher: "The Cornell Daily Sun", collegeSlug: "cornell-university" },
-  { url: "https://news.harvard.edu/gazette/feed/", publisher: "The Harvard Gazette", collegeSlug: "harvard-university" },
+  // Columbia's student blog. The Columbia Daily Spectator and The Harvard Crimson publish no public RSS feed found so far;
+  // their stories still arrive through Google News. The Harvard Gazette feed was dropped: the university's own news
+  // service, with almost nothing on topic (0 of 50 recent posts).
+  { url: "https://bwog.com/feed/", publisher: "Bwog", collegeSlug: "columbia-university" },
 ];
 
 /** Exact-name queries, used for both GDELT and Google News search. */
@@ -39,6 +42,9 @@ export const gdeltQueries: CollegeQuery[] = [
     collegeSlug: "harvard-university",
     names: ["Harvard University", "Harvard College"],
     shortName: "Harvard",
+    // Harvard appears in a great deal of national news (federal funding, admissions, visas), so a passing
+    // mention plus a broad term like "violence" matches too easily.
+    headlineMustName: true,
     // Harvard is usually sued as "President and Fellows of Harvard College".
     courtNames: ["Harvard College", "Harvard University"],
   },
