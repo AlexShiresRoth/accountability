@@ -20,7 +20,7 @@ export function SiteFooter() {
           </p>
           <p>
             <Link href="/methodology">Methodology</Link> · <Link href="/methodology#corrections">Corrections</Link> ·{" "}
-            <Link href="/sources">Sources</Link>
+            <Link href="/sources">Sources</Link> · <Link href="/roadmap">Roadmap</Link>
           </p>
         </div>
       </Container>

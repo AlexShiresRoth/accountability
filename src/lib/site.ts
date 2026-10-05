@@ -7,6 +7,7 @@ export const site = {
     { href: "/learn", label: "Prevention" },
     { href: "/methodology", label: "Methodology" },
     { href: "/sources", label: "Sources" },
+    { href: "/roadmap", label: "Roadmap" },
   ],
   /** Institutions in the initial release. Shown as "in preparation" until their profile is verified. */
   initialInstitutions: [
