@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CaseView } from "@/components/case/case-view";
+import { JsonLd } from "@/components/json-ld";
 import { getCase } from "@/lib/public";
+import { pageMetadata } from "@/lib/seo";
+import { caseStructuredData } from "@/lib/structured-data";
 
 export const revalidate = 3600;
 export function generateStaticParams() {
@@ -11,16 +14,22 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/case/[slug]">): Promise<Metadata> {
   const detail = await getCase((await params).slug);
   if (!detail) return {};
-  return {
+  return pageMetadata({
     title: detail.case.title,
     description: detail.case.summary,
-    alternates: { canonical: `/case/${detail.case.slug}` },
-    robots: detail.case.isDemo ? { index: false } : undefined,
-  };
+    path: `/case/${detail.case.slug}`,
+    type: "article",
+    noindex: detail.case.isDemo,
+  });
 }
 
 export default async function CasePage({ params }: PageProps<"/case/[slug]">) {
   const detail = await getCase((await params).slug);
   if (!detail) notFound();
-  return <CaseView detail={detail} />;
+  return (
+    <>
+      {!detail.case.isDemo && <JsonLd data={caseStructuredData(detail)} />}
+      <CaseView detail={detail} />
+    </>
+  );
 }

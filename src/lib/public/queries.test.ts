@@ -3,7 +3,7 @@ import type { Database } from "@/db/types";
 import type { VerificationStatus } from "@/lib/enums";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
-import { citationKey, getCase, getCollegeProfile, listPublicSources, searchColleges } from "./queries";
+import { citationKey, getCase, getCollegeProfile, listPublicSources, listSitemapEntries, searchColleges } from "./queries";
 import { shouldHideDemo, type PublicContext } from "./visibility";
 
 let db: Database;
@@ -368,5 +368,24 @@ describe("admin preview", () => {
     const pub = (await getCollegeProfile(ctx, college.slug))!;
     expect(pub.actions).toEqual([]);
     expect(pub.college.unverified).toBe(false);
+  });
+});
+
+describe("sitemap", () => {
+  it("lists published and under-review colleges and cases, but nothing hidden or demo", async () => {
+    const listed = [await f.college(), await f.college({ status: "needs_update" })];
+    const unlisted = [await f.college({ status: "pending_review" }), await f.college({ isDemo: true })];
+    const listedCase = await f.case();
+    const unlistedCases = [await f.case({ status: "draft" }), await f.case({ isDemo: true })];
+
+    // Demo records stay out even where the pages themselves would show them.
+    const entries = await listSitemapEntries({ db, hideDemo: false, preview: true });
+    const colleges = entries.colleges.map((c) => c.slug);
+    const cases = entries.cases.map((c) => c.slug);
+    for (const c of listed) expect(colleges).toContain(c.slug);
+    for (const c of unlisted) expect(colleges).not.toContain(c.slug);
+    expect(cases).toContain(listedCase.slug);
+    for (const c of unlistedCases) expect(cases).not.toContain(c.slug);
+    expect(entries.colleges[0].updatedAt).toBeInstanceOf(Date);
   });
 });

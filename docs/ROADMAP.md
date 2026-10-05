@@ -36,7 +36,14 @@ allowed but "entered by / reviewed by" is shown; only draft or rejected records 
 justification, an institution, and a verified, cited event before it can be verified.
 
 ### 6. Learn, SEO
-Scenario content review, sitemap, structured metadata.
+- [x] SEO: `metadataBase` from `NEXT_PUBLIC_SITE_URL` or the Vercel production domain; canonical URLs and full
+      Open Graph tags per page (`src/lib/seo.ts`); `robots.ts` (indexable only when `VERCEL_ENV=production`, with
+      `/admin`, `/api/` and `/search` disallowed); `sitemap.ts` listing published colleges and cases (never demo or
+      unpublished), hourly; generated share cards for the site, each college and each case; JSON-LD (WebSite and
+      Organization on the home page, BreadcrumbList on colleges and cases, Dataset for a college's Clery statistics).
+- [x] Draft lessons (`status: "placeholder"`) are noindexed and left out of the sitemap, as is `/learn` until a lesson is reviewed.
+- [ ] Scenario content review: mark lessons `reviewed` once editorially approved, which adds them to search.
+- [ ] After launch: submit the sitemap in Google Search Console and test pages with the Rich Results Test.
 
 ### 7. Deployment and scheduled discovery
 Deferred until the inbox exists, since candidates are only useful once researchers can triage them.
@@ -45,10 +52,10 @@ Deferred until the inbox exists, since candidates are only useful once researche
       calls `runDiscovery()`, returns the run summary, raised `maxDuration`.
 - [ ] `vercel.json` cron entry (e.g. `0 11 * * *`). Hobby plan: at most once per day with imprecise timing;
       more frequent runs need Pro or a GitHub Actions schedule calling the same route.
-- [ ] Vercel env vars: `CRON_SECRET`, `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `ADMIN_PASSWORD`,
-      `ADMIN_SESSION_SECRET`.
-- [ ] Migrate the production database, **schema only, no seed** (`pnpm db:migrate:prod`), after reviewing
-      the migration plan. Vercel crons only run on production deployments, which use the production DB.
+- [ ] Vercel env vars: `CRON_SECRET`, `DATABASE_URL` (session pooler, port 5432), `MIGRATION_DATABASE_URL`,
+      `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, optionally `NEXT_PUBLIC_SITE_URL` once a custom domain is set.
+- [x] Migrate the production database, schema only (2026-10-04). Non-demo dev data was then copied to production
+      with the same IDs; dev and production are edited independently from here.
 - [ ] Database connections: the app must use Supabase's **session** pooler (port 5432); the transaction pooler hangs
       under concurrent queries with postgres.js (see `src/db/client.ts`). Session-pooler connections are limited, so set a
       small per-instance `max` on Vercel and confirm the pool size under load before launch. Dev hit the 15-client

@@ -538,6 +538,33 @@ export async function listPublicSources(ctx: PublicContext): Promise<PublicSourc
 }
 
 // ---------------------------------------------------------------------------
+// Sitemap
+// ---------------------------------------------------------------------------
+
+export type SitemapEntries = {
+  colleges: { slug: string; updatedAt: Date }[];
+  cases: { slug: string; updatedAt: Date }[];
+};
+
+/** Published colleges and cases. Demo records are never listed, whatever the context. */
+export async function listSitemapEntries(ctx: PublicContext): Promise<SitemapEntries> {
+  const visible = { ...ctx, hideDemo: true, preview: false };
+  const [colleges, cases] = await Promise.all([
+    ctx.db
+      .select({ slug: s.colleges.slug, updatedAt: s.colleges.updatedAt })
+      .from(s.colleges)
+      .where(isPublic(s.colleges, visible))
+      .orderBy(asc(s.colleges.slug)),
+    ctx.db
+      .select({ slug: s.cases.slug, updatedAt: s.cases.updatedAt })
+      .from(s.cases)
+      .where(isPublic(s.cases, visible))
+      .orderBy(asc(s.cases.slug)),
+  ]);
+  return { colleges, cases };
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 

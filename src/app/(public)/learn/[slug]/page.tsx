@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { PlaceholderNotice } from "@/components/notice";
 import { ScenarioExercise } from "@/components/scenario";
 import { getLesson, lessons } from "@/content/lessons";
+import { pageMetadata } from "@/lib/seo";
 
 export const dynamicParams = false;
 
@@ -15,7 +16,9 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): Promise<Metadata> {
   const lesson = getLesson((await params).slug);
-  return lesson ? { title: lesson.title, description: lesson.summary } : {};
+  if (!lesson) return {};
+  // Draft lessons stay out of search until editorial review is complete.
+  return pageMetadata({ title: lesson.title, description: lesson.summary, path: `/learn/${lesson.slug}`, noindex: lesson.status !== "reviewed" });
 }
 
 export default async function LessonPage({ params }: PageProps<"/learn/[slug]">) {

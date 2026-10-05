@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { CollegeList } from "@/components/college-list";
+import type { Metadata } from "next";
 import { Container } from "@/components/container";
 import { DataQualityNotes } from "@/components/data-quality-note";
+import { JsonLd } from "@/components/json-ld";
 import { searchColleges } from "@/lib/public";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
+import { homeStructuredData } from "@/lib/structured-data";
 
 export const revalidate = 3600;
+
+export const metadata: Metadata = {
+  ...pageMetadata({ title: site.name, description: site.description, path: "/" }),
+  title: { absolute: `${site.name}: campus sexual violence statistics, institutional response and resources` },
+};
 
 const measures = [
   {
@@ -33,6 +42,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd data={homeStructuredData()} />
       <section className="border-b border-rule">
         <Container className="py-16 sm:py-24">
           <h1 className="max-w-3xl text-4xl sm:text-6xl">Look beyond the rankings.</h1>
