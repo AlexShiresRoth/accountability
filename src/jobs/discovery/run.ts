@@ -246,9 +246,16 @@ async function discover(
     }
   }
 
+  // GDELT failures (rate limits, refused or timed-out connections) are service-wide, and each costs two attempts
+  // and a 10 s retry wait. After the first failure, skip GDELT for the rest of the run.
   let gdeltRequests = 0;
-  for (const query of useGdelt ? gdeltQueries : []) {
+  let gdeltDown = false;
+  gdelt: for (const query of useGdelt ? gdeltQueries : []) {
     const label = `gdelt: ${query.names.join(" / ")}`;
+    if (gdeltDown) {
+      fail(label, "skipped: GDELT failed earlier in this run");
+      continue;
+    }
     const cid = collegeId(query.collegeSlug);
     if (!cid) continue;
     for (const terms of searchTermGroups) {
@@ -276,7 +283,8 @@ async function discover(
         }
       } catch (err) {
         fail(label, err);
-        break; // rate-limited or down: don't hammer it with the remaining groups
+        gdeltDown = true;
+        continue gdelt;
       }
     }
   }
@@ -474,5 +482,14 @@ function addCount(
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const message = (err: unknown) =>
-  err instanceof Error ? err.message : String(err);
+/**
+ * Error text for logs and the run record. Node's fetch reports every network failure as "fetch failed" and puts
+ * the reason (e.g. UND_ERR_CONNECT_TIMEOUT, ECONNRESET, ENOTFOUND) in `cause`, so include it.
+ */
+export function message(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause as { code?: string; message?: string } | undefined;
+  if (!cause) return err.message;
+  const detail = [cause.code, cause.message].filter(Boolean).join(": ");
+  return detail ? `${err.message} (${detail})` : err.message;
+}

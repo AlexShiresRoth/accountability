@@ -64,7 +64,10 @@ Deferred until the inbox exists, since candidates are only useful once researche
       under concurrent queries with postgres.js (see `src/db/client.ts`). Session-pooler connections are limited, so set a
       small per-instance `max` on Vercel and confirm the pool size under load before launch. Dev hit the 15-client
       session pool limit (`EMAXCONNSESSION`) until clients were capped at 4 with a 20 s idle timeout.
-- [ ] Re-test GDELT from Vercel. On 2026-09-29 it returned HTTP 429 to every request from the dev network.
+- [x] Re-tested GDELT from Vercel (first cron run, 2026-10-05): every request failed with "fetch failed" (no
+      connection), while locally it still answers HTTP 429 to every request. Scheduled runs now skip GDELT unless
+      `DISCOVERY_GDELT=on`; a GDELT failure stops GDELT for the rest of the run; network errors log their cause.
+- [ ] Revisit GDELT occasionally (`pnpm discover` still uses it by default); re-enable on the cron if it recovers.
 - [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/discovery`.
 
 ### 8. README

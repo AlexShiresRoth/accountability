@@ -4,7 +4,7 @@ import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
-import { acceptCandidate, candidateCounts, dismissCandidate, listCandidates } from "./inbox";
+import { acceptCandidate, candidateCounts, candidateCountsByCollege, dismissCandidate, listCandidates } from "./inbox";
 import {
   addCitation,
   cellKey,
@@ -405,5 +405,26 @@ describe("inbox pagination", () => {
 
   it("counts candidates per status for the tabs", async () => {
     expect(await candidateCounts(pdb)).toEqual({ new: 27, accepted: 0, dismissed: 1 });
+  });
+
+  it("filters by school, including items no school was matched to", async () => {
+    const other = await fixtures(pdb).college();
+    await pdb.insert(s.candidateItems).values([
+      { url: "https://news.example/other-1", title: "Other 1", collegeId: other.id },
+      { url: "https://news.example/other-2", title: "Other 2", collegeId: other.id, status: "dismissed" },
+      { url: "https://news.example/unmatched", title: "Unmatched" },
+    ]);
+
+    const onlyOther = await listCandidates(pdb, "new", 1, 10, other.id);
+    expect(onlyOther).toMatchObject({ total: 1, pageCount: 1 });
+    expect(onlyOther.items.map((x) => x.title)).toEqual(["Other 1"]);
+    expect((await listCandidates(pdb, "new", 1, 10, null)).items.map((x) => x.title)).toEqual(["Unmatched"]);
+    expect((await listCandidates(pdb, "new", 1, 10)).total).toBe(29); // no filter: every school
+
+    expect(await candidateCounts(pdb, other.id)).toEqual({ new: 1, accepted: 0, dismissed: 1 });
+    const bySchool = await candidateCountsByCollege(pdb, "new");
+    expect(bySchool.get(other.id)).toBe(1);
+    expect(bySchool.get(null)).toBe(1);
+    expect([...bySchool.values()].reduce((a, b) => a + b, 0)).toBe(29);
   });
 });

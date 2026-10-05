@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/admin/action-form";
 import { SelectField, TextArea, TextField } from "@/components/admin/fields";
 import { db } from "@/db";
-import { candidateCounts, listCandidates } from "@/lib/admin/inbox";
+import { candidateCounts, candidateCountsByCollege, listCandidates, type CollegeFilter } from "@/lib/admin/inbox";
 import { Pagination } from "@/components/admin/pagination";
 import { caseOptions, listColleges } from "@/lib/admin/queries";
 import { requireResearcherPage } from "@/lib/admin/session";
@@ -35,12 +35,26 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
   const raw = query.status;
   const status = (candidateStatuses as readonly string[]).includes(String(raw)) ? (raw as CandidateStatus) : "new";
   const requestedPage = Number(Array.isArray(query.page) ? query.page[0] : query.page) || 1;
-  const [result, counts, colleges, cases] = await Promise.all([
-    listCandidates(db, status, requestedPage),
-    candidateCounts(db),
-    listColleges(db),
+  const colleges = await listColleges(db);
+  // ?school=<college slug>, or "none" for items no college was matched to. Anything else shows all schools.
+  const school = String(Array.isArray(query.school) ? query.school[0] : (query.school ?? ""));
+  const schoolCollege = colleges.find((c) => c.slug === school);
+  const collegeFilter: CollegeFilter = school === "none" ? null : schoolCollege?.id;
+  const schoolParam: Record<string, string> = collegeFilter === undefined ? {} : { school };
+  const [result, counts, bySchool, cases] = await Promise.all([
+    listCandidates(db, status, requestedPage, undefined, collegeFilter),
+    candidateCounts(db, collegeFilter),
+    candidateCountsByCollege(db, status),
     caseOptions(db),
   ]);
+  const allInStatus = [...bySchool.values()].reduce((a, b) => a + b, 0);
+  const schoolTabs = [
+    { key: "", label: "All schools", n: allInStatus },
+    ...colleges.filter((c) => !c.isDemo || bySchool.has(c.id)).map((c) => ({ key: c.slug, label: c.name, n: bySchool.get(c.id) ?? 0 })),
+    ...(bySchool.has(null) ? [{ key: "none", label: "No school matched", n: bySchool.get(null)! }] : []),
+  ];
+  const activeSchool = collegeFilter === undefined ? "" : school;
+  const scopeLabel = collegeFilter === undefined ? "" : collegeFilter === null ? " with no school matched" : ` for ${schoolCollege!.name}`;
   const { items } = result;
   const pager = (
     <Pagination
@@ -49,8 +63,8 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
       total={result.total}
       pageSize={result.pageSize}
       basePath="/admin/inbox"
-      params={{ status }}
-      label={`${tabLabels[status].toLowerCase()} items`}
+      params={{ status, ...schoolParam }}
+      label={`${tabLabels[status].toLowerCase()} items${scopeLabel}`}
     />
   );
 
@@ -68,7 +82,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
         {candidateStatuses.map((st) => (
           <Link
             key={st}
-            href={`/admin/inbox?status=${st}`}
+            href={`/admin/inbox?${new URLSearchParams({ status: st, ...schoolParam })}`}
             aria-current={st === status ? "page" : undefined}
             className={`-mb-px border-b-2 px-1 pb-2 no-underline ${st === status ? "border-ink text-ink" : "border-transparent text-ink-muted"}`}
           >
@@ -77,7 +91,20 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
         ))}
       </nav>
 
-      {items.length === 0 ? <p className="text-ink-muted">No {tabLabels[status].toLowerCase()} items.</p> : pager}
+      <nav aria-label="School" className="flex flex-wrap gap-2 text-sm">
+        {schoolTabs.map((t) => (
+          <Link
+            key={t.key || "all"}
+            href={`/admin/inbox?${new URLSearchParams({ status, ...(t.key ? { school: t.key } : {}) })}`}
+            aria-current={t.key === activeSchool ? "page" : undefined}
+            className={`border px-3 py-1 no-underline ${t.key === activeSchool ? "border-ink bg-ink text-paper" : "border-rule-strong text-ink hover:border-ink"}`}
+          >
+            {t.label} <span className={`tabular ${t.key === activeSchool ? "" : "text-ink-muted"}`}>({t.n})</span>
+          </Link>
+        ))}
+      </nav>
+
+      {items.length === 0 ? <p className="text-ink-muted">No {tabLabels[status].toLowerCase()} items{scopeLabel}.</p> : pager}
 
       <ul className="space-y-6">
         {items.map((c) => (
