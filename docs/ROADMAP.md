@@ -82,11 +82,11 @@ Setup, architecture, editorial principles, and how verified data is added.
 - [ ] Cornell follow-up research: Policy 6.4 title/effective date and current procedures, and the Office of Civil
       Rights statistical summaries (officeofcivilrights.cornell.edu blocks automated retrieval; needs a browser and an
       archived copy).
-- [x] Harvard: 2025 and 2024 ASRs (Cambridge campus table) in `research/harvard-university.ts`; institutional
+- [x] Harvard: 2026, 2025 and 2024 ASRs (Cambridge campus table) in `research/harvard-university.ts`; institutional
       record (7 responses, 3 policies, 17 resources) in `research/harvard-institutional.ts`. Imported to dev as
       `pending_review`.
-- [ ] Harvard 2026 ASR (released ~2026-10-01): hupd.harvard.edu blocks automated retrieval and no archived copy
-      exists yet. Download it in a browser, then add it to `research/harvard-university.ts`.
+- [x] Harvard 2026 ASR added from a browser download (hupd.harvard.edu blocks automated retrieval).
+- [ ] Harvard 2026 ASR: add a Wayback snapshot once one exists (Save Page Now returned HTTP 520 on 2026-10-05).
 - [ ] Harvard: confirm from the Cambridge Clery geography map (2025 ASR p. 82) whether Allston is included.
 - [x] Columbia: 2026 and 2025 ASRs (Morningside campus table) in `research/columbia-university.ts`; institutional
       record (7 responses, 2 policies, 12 resources) in `research/columbia-institutional.ts`. Imported to dev as
