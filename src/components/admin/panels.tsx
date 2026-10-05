@@ -1,11 +1,13 @@
 import { cache } from "react";
 import { addCitationAction, changeStatusAction, deleteRecordAction, removeCitationAction } from "@/app/admin/actions";
 import { db } from "@/db";
-import { citationsFor, sourceOptions } from "@/lib/admin/queries";
+import { citationsFor, collegesForRecord, sourceOptions } from "@/lib/admin/queries";
 import { reviewTables, statusHistory, verificationProblems, type ReviewTableKey } from "@/lib/admin/workflow";
 import { verificationStatuses, type VerificationStatus } from "@/lib/enums";
 import { ActionForm } from "./action-form";
-import { SelectField, TextArea, TextField } from "./fields";
+import { TextArea, TextField } from "./fields";
+import { SourcePicker } from "./source-picker";
+import { sourceScopeFor } from "./source-scope";
 import { StatusBadge, statusLabels } from "./status";
 import { StatusSelect } from "./status-select";
 
@@ -82,7 +84,12 @@ export async function StatusPanel({ recordKey, record, extra }: { recordKey: Rev
 export async function CitationsPanel({ recordKey, recordId }: { recordKey: ReviewTableKey; recordId: string }) {
   const column = reviewTables[recordKey].citation;
   if (!column) return null;
-  const [cites, sources] = await Promise.all([citationsFor(db, column, recordId), cachedSourceOptions()]);
+  const [cites, sources, collegeIds] = await Promise.all([
+    citationsFor(db, column, recordId),
+    cachedSourceOptions(),
+    collegesForRecord(db, recordKey, recordId),
+  ]);
+  const scope = await sourceScopeFor(collegeIds, sources);
 
   return (
     <section aria-label="Citations" className="space-y-4 border border-rule p-4">
@@ -114,14 +121,7 @@ export async function CitationsPanel({ recordKey, recordId }: { recordKey: Revie
         <summary className="cursor-pointer text-sm font-medium">Add a citation</summary>
         <div className="mt-3">
           <ActionForm action={addCitationAction.bind(null, recordKey, recordId)} submitLabel="Add citation">
-            <SelectField
-              name="sourceId"
-              label="Source"
-              required
-              placeholder="Choose a source…"
-              options={sources.map((src) => ({ value: src.id, label: `${src.title} (${src.publisher}) · ${statusLabels[src.status]}` }))}
-              hint="Not listed? Create it under Sources first."
-            />
+            <SourcePicker name="sourceId" label="Source" required sources={sources} scope={scope} hint="Not listed? Create it under Sources first." />
             <TextField name="pinpoint" label="Location in source" hint="Page, section, or paragraph, e.g. p. 42." />
             <TextField name="claim" label="Claim supported" hint="Which specific fact this citation supports, if the record makes more than one." />
             <TextArea name="excerpt" label="Excerpt" hint="Short supporting quotation, copied exactly." rows={2} />

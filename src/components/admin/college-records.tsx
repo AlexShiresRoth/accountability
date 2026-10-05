@@ -8,6 +8,7 @@ import { actionTypeLabels, confidentialityLabels, policyTypeLabels, resourceCate
 import type { VerificationStatus } from "@/lib/enums";
 import { ActionForm } from "./action-form";
 import { RecordFields, recordLabels, type RecordOptions } from "./record-fields";
+import { sourceScopeFor } from "./source-scope";
 import { StatusBadge } from "./status";
 
 type Item = { id: string; status: VerificationStatus; primary: string; secondary?: string };
@@ -22,7 +23,7 @@ export async function CollegeRecordsSection({ collegeId }: { collegeId: string }
     caseOptions(db),
     actionOptions(db, collegeId),
   ]);
-  const options: RecordOptions = { sources, cases, actions };
+  const options: RecordOptions = { sources, cases, actions, sourceScope: await sourceScopeFor([collegeId], sources) };
 
   const groups: { key: CollegeRecordKey; items: Item[]; empty: string }[] = [
     {

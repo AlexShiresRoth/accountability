@@ -1,11 +1,12 @@
 import "server-only";
 // Admin reads. Unlike the public layer, these return records in every status.
 
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import type { VerificationStatus } from "@/lib/enums";
+import type { SourceOption } from "@/lib/source-search";
 import { collegeRecordTables, type CollegeRecordKey } from "./records";
 import { reviewTables, type ReviewTableKey } from "./workflow";
 
@@ -212,12 +213,87 @@ export async function citationsFor(db: Database, column: (typeof reviewTables)[R
     .orderBy(asc(s.citations.createdAt));
 }
 
-export async function sourceOptions(db: Database) {
-  return db
-    .select({ id: s.sources.id, title: s.sources.title, publisher: s.sources.publisher, status: s.sources.status })
+/** Every non-rejected source, for the source picker (src/components/admin/source-picker.tsx). */
+export async function sourceOptions(db: Database): Promise<SourceOption[]> {
+  const rows = await db
+    .select({
+      id: s.sources.id,
+      title: s.sources.title,
+      publisher: s.sources.publisher,
+      type: s.sources.type,
+      url: s.sources.url,
+      publicationDate: s.sources.publicationDate,
+      status: s.sources.status,
+      createdAt: s.sources.createdAt,
+    })
     .from(s.sources)
     .where(sql`${s.sources.status} <> 'rejected'`)
     .orderBy(asc(s.sources.title));
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+/** Raw-query rows: postgres.js returns an array, PGlite (tests) an object with `rows`. */
+function executeRows<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
+/**
+ * Which sources each college uses: as a report's source, in citations on its records (and on cases linked to
+ * it), as coverage, or as an accepted inbox item. Sources are not attached to colleges directly.
+ */
+export async function sourceCollegeLinks(db: Database): Promise<{ sourceId: string; collegeId: string }[]> {
+  const rows = executeRows<{ source_id: string; college_id: string | null }>(await db.execute(sql`
+    select source_id, college_id from clery_report
+    union select source_id, college_id from college_coverage
+    union select accepted_source_id, college_id from candidate_item
+      where accepted_source_id is not null and college_id is not null
+    union select ct.source_id, coalesce(
+        ct.college_id, r.college_id, sr.college_id, fr.college_id, ia.college_id,
+        ir.college_id, p.college_id, res.college_id, co.college_id
+      )
+      from citation ct
+      left join clery_report r on r.id = ct.clery_report_id
+      left join crime_statistic cs on cs.id = ct.crime_statistic_id
+      left join clery_report sr on sr.id = cs.clery_report_id
+      left join statistic_footnote f on f.id = ct.statistic_footnote_id
+      left join clery_report fr on fr.id = f.clery_report_id
+      left join institution_action ia on ia.id = ct.institution_action_id
+      left join institutional_response ir on ir.id = ct.institutional_response_id
+      left join policy p on p.id = ct.policy_id
+      left join student_resource res on res.id = ct.student_resource_id
+      left join correction co on co.id = ct.correction_id
+    union select ct.source_id, cc.college_id
+      from citation ct
+      left join case_event ev on ev.id = ct.case_event_id
+      left join correction co on co.id = ct.correction_id
+      join case_college cc on cc.case_id = coalesce(ct.case_id, ev.case_id, co.case_id)
+  `));
+  return rows.filter((r): r is { source_id: string; college_id: string } => Boolean(r.college_id))
+    .map((r) => ({ sourceId: r.source_id, collegeId: r.college_id }));
+}
+
+/** The college(s) a record belongs to, for scoping the source picker. Cases can belong to several. */
+export async function collegesForRecord(db: Database, key: ReviewTableKey, id: string): Promise<string[]> {
+  const viaCase = (caseId: SQL) => sql`select college_id from case_college where case_id = ${caseId}`;
+  const query = {
+    source: null,
+    college: sql`select ${id}::uuid as college_id`,
+    clery_report: sql`select college_id from clery_report where id = ${id}`,
+    crime_statistic: sql`select r.college_id from crime_statistic s join clery_report r on r.id = s.clery_report_id where s.id = ${id}`,
+    statistic_footnote: sql`select r.college_id from statistic_footnote f join clery_report r on r.id = f.clery_report_id where f.id = ${id}`,
+    institution_action: sql`select college_id from institution_action where id = ${id}`,
+    institutional_response: sql`select college_id from institutional_response where id = ${id}`,
+    policy: sql`select college_id from policy where id = ${id}`,
+    student_resource: sql`select college_id from student_resource where id = ${id}`,
+    college_coverage: sql`select college_id from college_coverage where id = ${id}`,
+    correction: sql`select college_id from correction where id = ${id} and college_id is not null
+      union ${viaCase(sql`(select case_id from correction where id = ${id})`)}`,
+    case: viaCase(sql`${id}::uuid`),
+    case_event: viaCase(sql`(select case_id from case_event where id = ${id})`),
+  }[key];
+  if (!query) return [];
+  const rows = executeRows<{ college_id: string | null }>(await db.execute(query));
+  return rows.map((r) => r.college_id).filter((c): c is string => Boolean(c));
 }
 
 export async function caseOptions(db: Database) {

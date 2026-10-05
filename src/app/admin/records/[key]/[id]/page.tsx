@@ -6,7 +6,8 @@ import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/pan
 import { RecordFields, recordLabels } from "@/components/admin/record-fields";
 import { StatusBadge } from "@/components/admin/status";
 import { db } from "@/db";
-import { actionOptions, caseOptions, getCollegeRecord, getSource, sourceOptions } from "@/lib/admin/queries";
+import { actionOptions, caseOptions, collegesForRecord, getCollegeRecord, getSource, sourceOptions } from "@/lib/admin/queries";
+import { sourceScopeFor } from "@/components/admin/source-scope";
 import { isCollegeRecordKey } from "@/lib/admin/records";
 import { requireResearcherPage } from "@/lib/admin/session";
 import type { VerificationStatus } from "@/lib/enums";
@@ -21,12 +22,14 @@ export default async function RecordAdmin({ params }: PageProps<"/admin/records/
   const data = await getCollegeRecord(db, key, id);
   if (!data) notFound();
   const { record, college, parentCase } = data;
-  const [sources, cases, actions, coverageSource] = await Promise.all([
+  const [sources, cases, actions, coverageSource, collegeIds] = await Promise.all([
     sourceOptions(db),
     caseOptions(db),
     college ? actionOptions(db, college.id) : Promise.resolve([]),
     key === "college_coverage" ? getSource(db, record.sourceId as string) : Promise.resolve(null),
+    collegesForRecord(db, key, id),
   ]);
+  const sourceScope = await sourceScopeFor(collegeIds, sources);
   const status = record.status as VerificationStatus;
   const reviewable = {
     id,
@@ -62,7 +65,7 @@ export default async function RecordAdmin({ params }: PageProps<"/admin/records/
         <div className="space-y-4">
           <PublishedEditWarning status={status} />
           <ActionForm action={updateCollegeRecordAction.bind(null, key, id)} submitLabel={`Save ${recordLabels[key].singular.toLowerCase()}`}>
-            <RecordFields recordKey={key} values={record} options={{ sources, cases, actions }} />
+            <RecordFields recordKey={key} values={record} options={{ sources, cases, actions, sourceScope }} />
           </ActionForm>
           <CitationsPanel recordKey={key} recordId={id} />
           {key === "college_coverage" && (
