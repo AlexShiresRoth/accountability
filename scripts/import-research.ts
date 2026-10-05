@@ -9,6 +9,16 @@ import { cornellInstitutional } from "../research/cornell-institutional";
 import { cornellAsr } from "../research/cornell-university";
 import { harvardInstitutional } from "../research/harvard-institutional";
 import { harvardAsr } from "../research/harvard-university";
+import { cuBoulderInstitutional } from "../research/university-of-colorado-boulder-institutional";
+import { cuBoulderAsr } from "../research/university-of-colorado-boulder";
+import { utahInstitutional } from "../research/university-of-utah-institutional";
+import { utahAsr } from "../research/university-of-utah";
+import { ohioStateInstitutional } from "../research/ohio-state-university-institutional";
+import { ohioStateAsr } from "../research/ohio-state-university";
+import { uclaInstitutional } from "../research/ucla-institutional";
+import { uclaAsr } from "../research/ucla";
+import { pennStateInstitutional } from "../research/penn-state-university-institutional";
+import { pennStateAsr } from "../research/penn-state-university";
 import { createPgClient } from "../src/db/client";
 import * as s from "../src/db/schema";
 import { resolveDatabaseUrl } from "../src/db/target";
@@ -23,6 +33,16 @@ const bundles: Record<string, ResearchBundle> = {
   "columbia-institutional": columbiaInstitutional,
   "harvard-university": harvardAsr,
   "harvard-institutional": harvardInstitutional,
+  "university-of-colorado-boulder": cuBoulderAsr,
+  "university-of-colorado-boulder-institutional": cuBoulderInstitutional,
+  "university-of-utah": utahAsr,
+  "university-of-utah-institutional": utahInstitutional,
+  "ohio-state-university": ohioStateAsr,
+  "ohio-state-university-institutional": ohioStateInstitutional,
+  ucla: uclaAsr,
+  "ucla-institutional": uclaInstitutional,
+  "penn-state-university": pennStateAsr,
+  "penn-state-university-institutional": pennStateInstitutional,
 };
 const ACTOR = "Claude (transcription)";
 

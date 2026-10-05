@@ -33,6 +33,17 @@ export const feeds: FeedSource[] = [
   // their stories still arrive through Google News. The Harvard Gazette feed was dropped: the university's own news
   // service, with almost nothing on topic (0 of 50 recent posts).
   { url: "https://bwog.com/feed/", publisher: "Bwog", collegeSlug: "columbia-university" },
+  { url: "https://cuindependent.org/feed/", publisher: "CU Independent", collegeSlug: "university-of-colorado-boulder" },
+  { url: "https://dailyutahchronicle.com/feed/", publisher: "The Daily Utah Chronicle", collegeSlug: "university-of-utah" },
+  { url: "https://www.thelantern.com/feed/", publisher: "The Lantern", collegeSlug: "ohio-state-university" },
+  // The Collegian has no /feed/ path; this is the site's own RSS search link (latest 50 articles).
+  {
+    url: "https://www.psucollegian.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc",
+    publisher: "The Daily Collegian",
+    collegeSlug: "penn-state-university",
+  },
+  // dailybruin.com/feed/ redirects; the WordPress host serves the feed directly.
+  { url: "https://wp.dailybruin.com/feed/", publisher: "Daily Bruin", collegeSlug: "ucla" },
 ];
 
 /** Exact-name queries, used for both GDELT and Google News search. */
@@ -55,5 +66,38 @@ export const gdeltQueries: CollegeQuery[] = [
     headlineMustName: true,
     // Usually sued as "The Trustees of Columbia University in the City of New York".
     courtNames: ["Columbia University"],
+  },
+  {
+    collegeSlug: "university-of-utah",
+    names: ["University of Utah"],
+    // Not "Utah": headlines naming the state would be re-filed here.
+    shortName: "University of Utah",
+    courtNames: ["University of Utah"],
+  },
+  {
+    collegeSlug: "university-of-colorado-boulder",
+    names: ["University of Colorado Boulder", "CU Boulder"],
+    shortName: "CU Boulder",
+    // Usually sued as "The Regents of the University of Colorado", which also covers the other CU campuses.
+    courtNames: ["University of Colorado Boulder", "Regents of the University of Colorado"],
+  },
+  {
+    collegeSlug: "ohio-state-university",
+    names: ["Ohio State University"],
+    shortName: "Ohio State",
+    courtNames: ["Ohio State University"],
+  },
+  {
+    collegeSlug: "penn-state-university",
+    names: ["Penn State", "Pennsylvania State University"],
+    shortName: "Penn State",
+    courtNames: ["Pennsylvania State University"],
+  },
+  {
+    collegeSlug: "ucla",
+    names: ["UCLA", "University of California, Los Angeles"],
+    shortName: "UCLA",
+    // Not "Regents of the University of California": that names every UC campus.
+    courtNames: ["University of California, Los Angeles", "UCLA"],
   },
 ];

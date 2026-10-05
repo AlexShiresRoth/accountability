@@ -100,7 +100,7 @@ export default async function HomePage() {
             Universities
           </h2>
           <p className="mt-3 max-w-[60ch] text-ink-muted">
-            Coverage begins with three institutions and will expand as profiles are researched and verified.{" "}
+            Coverage began with three institutions and is expanding as profiles are researched and verified.{" "}
             <Link href="/roadmap">What’s next</Link>
           </p>
           <div className="mt-8">

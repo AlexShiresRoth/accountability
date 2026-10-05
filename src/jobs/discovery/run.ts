@@ -97,7 +97,9 @@ export const defaultFetchText: FetchText = async (url) => {
 
 const GDELT_INTERVAL_MS = 6_000;
 const GOOGLE_NEWS_INTERVAL_MS = 2_000;
-const COURTLISTENER_INTERVAL_MS = 2_000;
+// CourtListener's anonymous API allows about five searches a minute: on 2026-10-05 the sixth search was refused
+// (HTTP 429) at both 2 s and 8 s spacing. With more institutions, an API token would lift this.
+const COURTLISTENER_INTERVAL_MS = 15_000;
 
 /**
  * Runs discovery and records it in ingestion_run: outcome, duration, per-source summary, and errors.

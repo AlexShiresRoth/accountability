@@ -82,6 +82,27 @@ describe("importResearchBundle", () => {
   });
 });
 
+describe("importResearchBundle with a new college", () => {
+  const bundle: ResearchBundle = {
+    college: { slug: "example-state-university", create: { name: "Example State University", city: "Springfield", state: "IL" } },
+    sources: {},
+    reports: [],
+  };
+
+  it("creates a missing college as a draft, then queues it for review", async () => {
+    const { log } = await importResearchBundle(db, bundle, actor);
+    expect(log).toContain("College Example State University: created as a draft.");
+    const [college] = await db.select().from(s.colleges).where(eq(s.colleges.slug, "example-state-university"));
+    expect(college).toMatchObject({ name: "Example State University", city: "Springfield", state: "IL", createdBy: actor, status: "pending_review" });
+  });
+
+  it("uses the existing college on a re-run instead of creating another", async () => {
+    const { log } = await importResearchBundle(db, bundle, actor);
+    expect(log.some((l) => l.includes("created as a draft"))).toBe(false);
+    expect(await db.select().from(s.colleges).where(eq(s.colleges.slug, "example-state-university"))).toHaveLength(1);
+  });
+});
+
 describe("Cornell institutional record bundle", () => {
   it("validates, and every record carries at least one citation", () => {
     expect(validateBundle(cornellInstitutional)).toEqual([]);

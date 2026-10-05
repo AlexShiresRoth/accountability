@@ -12,6 +12,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 const CFR_668_46 = "https://www.law.cornell.edu/cfr/text/34/668.46";
+const CAMPUS_SAFETY_DATA = "https://ope.ed.gov/campussafety/";
 
 const sections = [
   { id: "verification", title: "Sourcing and verification" },
@@ -19,6 +20,7 @@ const sections = [
   { id: "delayed-reports", title: "Delayed reports and annual counts" },
   { id: "geography", title: "Clery geography" },
   { id: "comparisons", title: "Comparing institutions" },
+  { id: "coverage", title: "Which universities we cover" },
   { id: "missing-information", title: "Missing information" },
   { id: "legal-status", title: "Legal and procedural terms" },
   { id: "privacy", title: "Privacy" },
@@ -145,6 +147,19 @@ export default function MethodologyPage() {
             Universities differ in enrollment, campus geography, the share of students living on campus, and how they
             train staff to receive and record reports. For these reasons we do not rank institutions or calculate a
             safety score. Where figures are shown side by side, read them as context, not as a comparison of safety.
+          </p>
+
+          <h2 id="coverage">Which universities we cover</h2>
+          <p>
+            We began with Cornell, Harvard and Columbia. We are now adding the universities that reported the largest
+            numbers of rapes, across all Clery locations, in the U.S. Department of Education&rsquo;s most recent{" "}
+            <a href={CAMPUS_SAFETY_DATA}>Campus Safety and Security data</a> (calendar year 2024).
+          </p>
+          <p>
+            That order is not a ranking, and it does not mean these universities are less safe than others. Raw counts
+            rise with enrollment, with how willing students are to come forward, and with how carefully an institution
+            records reports. A single year can also be shaped by one-time events, such as many past incidents being
+            reported at once. University profiles do not mention how they were selected.
           </p>
 
           <h2 id="missing-information">Missing information</h2>
