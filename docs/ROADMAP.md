@@ -102,6 +102,19 @@ page's work-in-progress note links to it and lists the universities still in pre
 - [x] Harvard and Columbia bundles imported into production as `pending_review` (2026-10-05) with
       `DB_TARGET=production pnpm import-research <bundle> --production`.
 - [ ] Verify the Harvard and Columbia transcriptions and institutional records in the production admin, then the college records.
+- [x] Large public universities (selected by 2024 rapes reported across Clery locations in the federal Campus Safety
+      and Security data, Crime2025EXCEL.zip; see Methodology → "Which universities we cover"): Utah, CU Boulder, Ohio
+      State, Penn State, UCLA. 2026 and 2025 ASRs (main campus) and institutional records in `research/`, imported to
+      dev as `pending_review`. Every overlapping 2022–2024 cell was compared with the federal data: Ohio State, Penn
+      State and UCLA match exactly; CU Boulder differs in one cell (2024 noncampus fondling) and Utah in three (2024
+      domestic violence, where the 2026 report's row appears shifted between columns). Differences are listed in each
+      file's header; figures are as printed.
+- [x] Imported the five into production as `pending_review` (2026-10-05).
+- [ ] Verify the five in the production admin, then their college records.
+- [ ] Bennington College reported 53 rapes in 2024 (927 students; 1 in each of the two prior years): research what
+      explains it before considering a profile.
+- [ ] CourtListener: anonymous search allows ~5 requests/minute, so docket searches are spaced 15 s apart. Add an
+      API token before adding many more institutions.
 - [ ] Multi-campus institutions: Cornell publishes separate reports for Ithaca, Cornell Tech, and Weill Cornell Medicine,
       but the schema allows one report per college per year. Decide whether to add a campus dimension.
 - [ ] Discovery gaps: Cornell Chronicle, statements.cornell.edu, The Harvard Crimson, Columbia Daily

@@ -16,13 +16,19 @@ export function WorkInProgressNote({ inPreparation }: { inPreparation: string[] 
     <p role="note" className="max-w-[70ch] border-l-2 border-accent pl-4 text-[0.95rem] text-ink-muted">
       <strong className="text-ink">A work in progress.</strong> Each university profile is researched from primary
       documents and checked by a person before it is published, which takes time.
-      {inPreparation.length > 0 && ` ${listFormat.format(inPreparation)} ${inPreparation.length === 1 ? "is" : "are"} in preparation.`}{" "}
+      {inPreparation.length > 0 && ` ${preparationText(inPreparation)}`}{" "}
       <Link href="/roadmap">See what’s planned</Link>
     </p>
   );
 }
 
 const listFormat = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** Names a few universities; past three, a count reads better than a list. */
+function preparationText(names: string[]): string {
+  if (names.length > 3) return `${names.length} more universities are in preparation.`;
+  return `${listFormat.format(names)} ${names.length === 1 ? "is" : "are"} in preparation.`;
+}
 
 export function PlaceholderNotice({ children }: { children?: React.ReactNode }) {
   return (

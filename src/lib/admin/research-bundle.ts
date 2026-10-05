@@ -12,6 +12,7 @@ import {
   collegeRecordTables,
   createCase,
   createCaseEvent,
+  createCollege,
   createCollegeRecord,
   createFootnote,
   createReport,
@@ -30,6 +31,8 @@ export type BundleCitation = { source: string; pinpoint?: string; excerpt?: stri
 export type ResearchBundle = {
   college: {
     slug: string;
+    /** For a college not yet in the database: created as a draft with these details. Ignored if it exists. */
+    create?: { name: string; aliases?: string[]; city?: string | null; state?: string | null };
     /** Only the fields being set; everything else on the college record is left as is. */
     updates?: { enrollment?: number | null; enrollmentNote?: string | null };
     citations?: BundleCitation[];
@@ -146,7 +149,18 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
   const queued: ImportSummary["queued"] = [];
   const queue = (key: ReviewTableKey, id: string) => queued.push({ key, id });
 
-  const [college] = await db.select().from(s.colleges).where(eq(s.colleges.slug, bundle.college.slug));
+  let [college] = await db.select().from(s.colleges).where(eq(s.colleges.slug, bundle.college.slug));
+  if (!college && bundle.college.create) {
+    const { name, aliases = [], city = null, state = null } = bundle.college.create;
+    const created = await createCollege(
+      db,
+      { slug: bundle.college.slug, name, aliases, city, state, enrollment: null, enrollmentNote: null, lastReviewedAt: null },
+      actor,
+    );
+    if (!created.ok) throw new Error(created.problems.join(" "));
+    [college] = await db.select().from(s.colleges).where(eq(s.colleges.id, created.value));
+    log.push(`College ${name}: created as a draft.`);
+  }
   if (!college) throw new Error(`College "${bundle.college.slug}" not found.`);
 
   // Sources: reuse by URL.

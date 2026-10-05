@@ -23,6 +23,15 @@ export const roadmap: RoadmapItem[] = [
     updated: "2026-10",
   },
   {
+    id: "large-public-universities",
+    title: "Five more university profiles",
+    summary:
+      "The University of Utah, the University of Colorado Boulder, The Ohio State University, Penn State and UCLA: statistics from each university's Annual Security Reports, with its policies and reporting and support resources, each checked against the original before publication.",
+    status: "in_progress",
+    updated: "2026-10",
+    link: { href: "/methodology#coverage", label: "How universities are chosen" },
+  },
+  {
     id: "lessons-review",
     title: "Editorial review of the prevention lessons",
     summary:
@@ -35,7 +44,7 @@ export const roadmap: RoadmapItem[] = [
     id: "more-universities",
     title: "More universities",
     summary:
-      "After Cornell, Harvard and Columbia: the remaining Ivy League universities, then institutions nationwide. Each profile is researched from primary documents and verified by a person before it is published, so new universities will appear gradually.",
+      "More of the universities reporting the largest numbers of incidents in federal data, then the remaining Ivy League universities and institutions nationwide. Each profile is researched from primary documents and verified by a person before it is published, so new universities will appear gradually.",
     status: "planned",
     updated: "2026-10",
   },
