@@ -208,6 +208,28 @@ describe("runDiscovery", () => {
     expect(await db.select().from(s.candidateItems)).toHaveLength(3);
   });
 
+  it("stops trying GDELT after its first failure, recording the network cause", async () => {
+    let gdeltCalls = 0;
+    const gdeltDown: FetchText = async (url) => {
+      if (!url.includes("gdelt")) return { status: 200, body: feedBody };
+      gdeltCalls++;
+      throw new TypeError("fetch failed", { cause: { code: "UND_ERR_CONNECT_TIMEOUT", message: "Connect Timeout Error" } });
+    };
+    const result = await runDiscovery({
+      ...options(gdeltDown),
+      gdeltQueries: [
+        { collegeSlug: "harvard-university", names: ["Harvard University"], courtNames: ["Harvard University"], shortName: "Harvard" },
+        { collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" },
+      ],
+    });
+    expect(gdeltCalls).toBe(2); // one request and its retry, for the first institution only
+    expect(result.errors).toEqual([
+      "gdelt: Harvard University: fetch failed (UND_ERR_CONNECT_TIMEOUT: Connect Timeout Error)",
+      "gdelt: Cornell University: skipped: GDELT failed earlier in this run",
+    ]);
+    expect(result.bySource["feed: The Sun"]).toEqual({ found: 3, relevant: 2 });
+  });
+
   it("keeps going when one source fails, and records the error", async () => {
     const failingFeed: FetchText = async (url) =>
       url.includes("gdelt") ? { status: 200, body: isFirstGroup(url) ? gdeltBody : "{}" } : { status: 503, body: "down" };

@@ -3,8 +3,12 @@ import { db } from "@/db";
 import { runDiscovery } from "@/jobs/discovery/run";
 import { createLogger } from "@/lib/log";
 
-// Scheduled by vercel.json. GDELT's rate limit makes a full run take up to a couple of minutes.
+// Scheduled by vercel.json. A run takes under a minute without GDELT, up to a few minutes with it.
 export const maxDuration = 300;
+
+// GDELT has refused connections from Vercel and rate-limited every request elsewhere since late September 2026,
+// so scheduled runs skip it unless DISCOVERY_GDELT=on. Google News covers the same outlets.
+const gdeltEnabled = () => process.env.DISCOVERY_GDELT === "on";
 
 export async function GET(req: NextRequest) {
   const log = createLogger("discovery", { trigger: "cron" });
@@ -16,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await runDiscovery({ db, triggeredBy: "cron", log });
+    const result = await runDiscovery({ db, triggeredBy: "cron", log, sources: { gdelt: gdeltEnabled() } });
     return NextResponse.json({ ok: result.outcome === "ok", ...result });
   } catch (err) {
     // runDiscovery has already logged the failure and recorded it on the run.

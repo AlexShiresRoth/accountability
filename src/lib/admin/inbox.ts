@@ -1,7 +1,7 @@
 import "server-only";
 // Researcher triage of discovered candidates. Accepting creates DRAFT records only; nothing is published here.
 
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
@@ -13,15 +13,30 @@ export const INBOX_PAGE_SIZE = 25;
 
 export type CandidatePage = Awaited<ReturnType<typeof listCandidates>>;
 
+/** Which school's candidates: a college id, `null` for items no college was matched to, or undefined for all. */
+export type CollegeFilter = string | null | undefined;
+
+function inCollege(college: CollegeFilter): SQL | undefined {
+  if (college === undefined) return undefined;
+  return college === null ? isNull(s.candidateItems.collegeId) : eq(s.candidateItems.collegeId, college);
+}
+
 /**
  * One page of candidates in a status, newest first (undated last), with a stable tie-break so items
  * never shift between pages. The requested page is clamped to the last page.
  */
-export async function listCandidates(db: Database, status: CandidateStatus = "new", page = 1, pageSize = INBOX_PAGE_SIZE) {
+export async function listCandidates(
+  db: Database,
+  status: CandidateStatus = "new",
+  page = 1,
+  pageSize = INBOX_PAGE_SIZE,
+  college?: CollegeFilter,
+) {
+  const where = and(eq(s.candidateItems.status, status), inCollege(college));
   const [{ total }] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(s.candidateItems)
-    .where(eq(s.candidateItems.status, status));
+    .where(where);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const current = Math.min(Math.max(1, Math.floor(page) || 1), pageCount);
 
@@ -43,7 +58,7 @@ export async function listCandidates(db: Database, status: CandidateStatus = "ne
     })
     .from(s.candidateItems)
     .leftJoin(s.colleges, eq(s.candidateItems.collegeId, s.colleges.id))
-    .where(eq(s.candidateItems.status, status))
+    .where(where)
     .orderBy(sql`${s.candidateItems.publishedAt} desc nulls last`, desc(s.candidateItems.createdAt), asc(s.candidateItems.id))
     .limit(pageSize)
     .offset((current - 1) * pageSize);
@@ -52,14 +67,26 @@ export async function listCandidates(db: Database, status: CandidateStatus = "ne
 }
 
 /** Number of candidates in each status, for the inbox tabs. */
-export async function candidateCounts(db: Database): Promise<Record<CandidateStatus, number>> {
+/** Candidates per status, optionally within one school. */
+export async function candidateCounts(db: Database, college?: CollegeFilter): Promise<Record<CandidateStatus, number>> {
   const rows = await db
     .select({ status: s.candidateItems.status, n: sql<number>`count(*)::int` })
     .from(s.candidateItems)
+    .where(inCollege(college))
     .groupBy(s.candidateItems.status);
   const counts = Object.fromEntries(candidateStatuses.map((st) => [st, 0])) as Record<CandidateStatus, number>;
   for (const r of rows) counts[r.status] = r.n;
   return counts;
+}
+
+/** Candidates in a status per college id (`null` = no college matched). */
+export async function candidateCountsByCollege(db: Database, status: CandidateStatus): Promise<Map<string | null, number>> {
+  const rows = await db
+    .select({ collegeId: s.candidateItems.collegeId, n: sql<number>`count(*)::int` })
+    .from(s.candidateItems)
+    .where(eq(s.candidateItems.status, status))
+    .groupBy(s.candidateItems.collegeId);
+  return new Map(rows.map((r) => [r.collegeId, r.n]));
 }
 
 export async function dismissCandidate(db: Database, id: string, actor: string): Promise<MutationResult> {
