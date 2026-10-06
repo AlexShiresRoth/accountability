@@ -144,6 +144,8 @@ export const acceptCandidateSchema = z
     /** The publisher's own URL. Required when the candidate was found via Google News. */
     articleUrl: webUrl,
   })
+  // Choosing a case means the coverage is about that case, whatever the scope field says.
+  .transform((v) => ({ ...v, scope: v.caseId ? ("case" as const) : v.scope }))
   .refine((v) => !v.articleUrl || !isGoogleNewsUrl(v.articleUrl), {
     message: "Paste the publisher's own article URL, not a Google News link. Open the article, then copy the address bar.",
     path: ["articleUrl"],
@@ -224,8 +226,10 @@ export const coverageSchema = z
     topic: z.enum(coverageTopics),
     summary: required("Summary", 600).min(20, "Write a neutral one-sentence summary (at least 20 characters)."),
   })
-  .refine((v) => v.scope === "institutional" || v.caseId, { message: "Case-specific coverage must be linked to a case.", path: ["caseId"] })
-  .transform((v) => ({ ...v, caseId: v.scope === "case" ? v.caseId : null }));
+  // Choosing a case means the coverage is about that case, whatever the scope field says. Before this, a case
+  // picked with "Institution-level" left selected was silently dropped on save.
+  .transform((v) => ({ ...v, scope: v.caseId ? ("case" as const) : v.scope }))
+  .refine((v) => v.scope === "institutional" || v.caseId, { message: "Case-specific coverage must be linked to a case.", path: ["caseId"] });
 export type CoverageInput = z.infer<typeof coverageSchema>;
 
 export const correctionSchema = z.object({

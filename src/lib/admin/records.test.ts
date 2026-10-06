@@ -337,6 +337,21 @@ describe("inbox", () => {
     expect(acceptCandidateSchema.safeParse({ ...input(college), summary: "Too short" }).success).toBe(false);
     expect(acceptCandidateSchema.safeParse({ ...input(college), scope: "case", caseId: "" }).success).toBe(false);
   });
+
+  it("files coverage under the chosen case even if Scope was left on institution-level", async () => {
+    const college = await f.college();
+    const c = await f.case({ collegeIds: [college.id] });
+    const [candidate] = await db
+      .insert(s.candidateItems)
+      .values({ url: `https://news.example/case-${Date.now()}`, title: "Lawsuit filed", publisher: "News", collegeId: college.id })
+      .returning();
+    const parsed = input(college.id, { scope: "institutional", caseId: c.id });
+    const res = await acceptCandidate(db, candidate.id, parsed, actor);
+    expect(res).toMatchObject({ ok: true });
+    const coverageId = (res as { value: { coverageId: string } }).value.coverageId;
+    const [cov] = await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.id, coverageId));
+    expect(cov).toMatchObject({ scope: "case", caseId: c.id });
+  });
 });
 
 describe("form validation", () => {
