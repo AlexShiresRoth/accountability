@@ -16,11 +16,18 @@ export type SourceFilters = { q: string; college: string };
 const searchText = (s: IndexedSource) =>
   [s.title, s.publisher, sourceTypes[s.type].label, s.publicationDate ?? "", s.url ?? "", s.notes ?? ""].join(" ");
 
+/**
+ * `college` value for published sources that no published page cites yet, e.g. a news article whose coverage
+ * entry is still a draft. Without it, the per-university counts would not add up to the total.
+ */
+export const NOT_YET_CITED = "not-yet-cited";
+
 /** Filters from a query string. An unknown university is ignored rather than showing an empty list. */
 export function readFilters(search: string, colleges: { slug: string }[]): SourceFilters {
   const params = new URLSearchParams(search);
   const requested = params.get("college") ?? "";
-  return { q: params.get("q") ?? "", college: colleges.some((c) => c.slug === requested) ? requested : "" };
+  const known = requested === NOT_YET_CITED || colleges.some((c) => c.slug === requested);
+  return { q: params.get("q") ?? "", college: known ? requested : "" };
 }
 
 /** The query string for a set of filters: "" when unfiltered. */
@@ -35,7 +42,7 @@ export function filtersToQuery({ q, college }: SourceFilters): string {
 /** Sources cited for the university (if any) that match every word of the search, ordered by source type. */
 export function filterSources(sources: IndexedSource[], { q, college }: SourceFilters): IndexedSource[] {
   return sources
-    .filter((s) => !college || s.colleges.includes(college))
+    .filter((s) => !college || (college === NOT_YET_CITED ? s.colleges.length === 0 : s.colleges.includes(college)))
     .filter((s) => matchesAllWords(searchText(s), q))
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type));
 }
@@ -74,6 +81,7 @@ export function SourceIndex({ index }: { index: PublicSourceIndex }) {
   const groups = typeOrder.map((type) => [type, visible.filter((s) => s.type === type)] as const).filter(([, list]) => list.length);
   const names = new Map(index.colleges.map((c) => [c.slug, c.name]));
   const filtered = Boolean(college || q.trim());
+  const notYetCited = index.sources.filter((s) => s.colleges.length === 0).length;
 
   if (index.sources.length === 0) return <p className="mt-3 text-ink-muted">No verified sources have been published yet.</p>;
 
@@ -98,13 +106,15 @@ export function SourceIndex({ index }: { index: PublicSourceIndex }) {
             onChange={(e) => update({ college: e.target.value })}
             className="w-full border border-rule-strong bg-surface px-3 py-2 text-ink focus:outline-none focus-visible:border-accent"
           >
-            <option value="">All universities ({index.sources.length})</option>
+            <option value="">All sources ({index.sources.length})</option>
             {index.colleges.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {c.name} ({c.count})
               </option>
             ))}
+            {notYetCited > 0 && <option value={NOT_YET_CITED}>Not yet cited on a published page ({notYetCited})</option>}
           </select>
+          <span className="block text-xs text-ink-muted">A source is listed under a university once a published page cites it.</span>
         </label>
       </form>
 
@@ -112,7 +122,7 @@ export function SourceIndex({ index }: { index: PublicSourceIndex }) {
         {matches.length === 0
           ? "No sources match."
           : `Showing ${visible.length} of ${matches.length} source${matches.length === 1 ? "" : "s"}` +
-            (college ? ` cited for ${names.get(college)}` : "") +
+            (college === NOT_YET_CITED ? " not yet cited on a published page" : college ? ` cited for ${names.get(college)}` : "") +
             (q.trim() ? ` matching “${q.trim()}”` : "") +
             "."}{" "}
         {filtered && (

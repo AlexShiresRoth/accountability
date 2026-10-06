@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicSourceIndex } from "@/lib/public";
-import { PAGE_SIZE, SourceIndex, filterSources, filtersToQuery, readFilters } from "./source-index";
+import { NOT_YET_CITED, PAGE_SIZE, SourceIndex, filterSources, filtersToQuery, readFilters } from "./source-index";
 
 type Indexed = PublicSourceIndex["sources"][number];
 const source = (id: string, o: Partial<Indexed> = {}): Indexed => ({
@@ -52,6 +52,10 @@ describe("source index filters", () => {
     expect(ids({ q: "CAMPUS SAFETY" })).toEqual(["both"]);
   });
 
+  it("has a bucket for published sources no published page cites yet", () => {
+    expect(ids({ college: NOT_YET_CITED })).toEqual(["both"]);
+  });
+
   it("combines the search with the university filter", () => {
     expect(ids({ q: "cornell", college: "cornell-university" })).toEqual(["asr", "docket"]);
     expect(ids({ q: "cornell", college: "ucla" })).toEqual([]);
@@ -62,6 +66,10 @@ describe("source index URL", () => {
   it("reads filters from the query string", () => {
     expect(readFilters("?college=ucla&q=title%20ix", colleges)).toEqual({ q: "title ix", college: "ucla" });
     expect(readFilters("", colleges)).toEqual({ q: "", college: "" });
+  });
+
+  it("accepts the not-yet-cited bucket", () => {
+    expect(readFilters(`?college=${NOT_YET_CITED}`, colleges)).toEqual({ q: "", college: NOT_YET_CITED });
   });
 
   it("ignores a university that isn't in the index instead of showing nothing", () => {
@@ -79,12 +87,19 @@ describe("source index URL", () => {
 describe("SourceIndex rendering", () => {
   it("lists every university with its count, and links each source to the universities that cite it", () => {
     const html = renderToStaticMarkup(<SourceIndex index={{ sources, colleges }} />);
-    expect(text(html)).toContain("All universities (4)");
+    expect(text(html)).toContain("All sources (4)");
     expect(text(html)).toContain("Cornell University (2)");
+    // Cornell 2 + UCLA 1 + not yet cited 1 = all 4: the options add up.
+    expect(text(html)).toContain("Not yet cited on a published page (1)");
     expect(html).toContain('href="/college/cornell-university"');
     expect(text(html)).toContain("Cited for Cornell University");
     expect(text(html)).toContain(`Showing 4 of 4 sources.`);
     expect(text(html)).not.toContain("Clear filters");
+  });
+
+  it("omits the not-yet-cited option when every source is cited", () => {
+    const html = text(renderToStaticMarkup(<SourceIndex index={{ sources: sources.slice(0, 3), colleges }} />));
+    expect(html).not.toContain("Not yet cited");
   });
 
   it("does not claim a university for a source no published page cites", () => {
