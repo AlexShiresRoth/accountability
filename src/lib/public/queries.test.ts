@@ -3,7 +3,7 @@ import type { Database } from "@/db/types";
 import type { VerificationStatus } from "@/lib/enums";
 import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
-import { citationKey, getCase, getCollegeProfile, listPublicSources, listSitemapEntries, searchColleges } from "./queries";
+import { citationKey, getCase, getCollegeProfile, listPublicSourceIndex, listPublicSources, listSitemapEntries, searchColleges } from "./queries";
 import { shouldHideDemo, type PublicContext } from "./visibility";
 
 let db: Database;
@@ -387,5 +387,48 @@ describe("sitemap", () => {
     expect(cases).toContain(listedCase.slug);
     for (const c of unlistedCases) expect(cases).not.toContain(c.slug);
     expect(entries.colleges[0].updatedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("source index", () => {
+  it("links a source to a university only through published pages", async () => {
+    const pub = await f.college({ name: "Indexed Public University" });
+    const hidden = await f.college({ name: "Indexed Draft University", status: "draft" });
+    const [asr, cited, onDraftCollege, onHiddenRecord, uncited] = await Promise.all([1, 2, 3, 4, 5].map(() => f.source()));
+    await f.report({ collegeId: pub.id, sourceId: asr.id });
+    const response = await f.response({ collegeId: pub.id });
+    await f.citation({ sourceId: cited.id, institutionalResponseId: response.id });
+    await f.report({ collegeId: hidden.id, sourceId: onDraftCollege.id });
+    const draftPolicy = await f.policy({ collegeId: pub.id, status: "draft" });
+    await f.citation({ sourceId: onHiddenRecord.id, policyId: draftPolicy.id });
+
+    const index = await listPublicSourceIndex(ctx);
+    const collegesOf = (id: string) => index.sources.find((x) => x.id === id)?.colleges;
+    expect(collegesOf(asr.id)).toEqual([pub.slug]);
+    expect(collegesOf(cited.id)).toEqual([pub.slug]);
+    // Published sources still appear, but without a link to an unpublished college or record.
+    expect(collegesOf(onDraftCollege.id)).toEqual([]);
+    expect(collegesOf(onHiddenRecord.id)).toEqual([]);
+    expect(collegesOf(uncited.id)).toEqual([]);
+    expect(index.colleges.map((c) => c.slug)).toContain(pub.slug);
+    expect(index.colleges.map((c) => c.slug)).not.toContain(hidden.slug);
+    expect(index.colleges.find((c) => c.slug === pub.slug)?.count).toBe(2);
+  });
+
+  it("links sources cited by a published case to each of its universities, but not a draft case's", async () => {
+    const [one, two] = [await f.college({ name: "Case College One" }), await f.college({ name: "Case College Two" })];
+    const [caseDoc, eventDoc, draftCaseDoc] = await Promise.all([1, 2, 3].map(() => f.source()));
+    const published = await f.case({ collegeIds: [one.id, two.id] });
+    await f.citation({ sourceId: caseDoc.id, caseId: published.id });
+    const event = await f.event({ caseId: published.id });
+    await f.citation({ sourceId: eventDoc.id, caseEventId: event.id });
+    const draft = await f.case({ collegeIds: [one.id], status: "draft" });
+    await f.citation({ sourceId: draftCaseDoc.id, caseId: draft.id });
+
+    const index = await listPublicSourceIndex(ctx);
+    const collegesOf = (id: string) => index.sources.find((x) => x.id === id)?.colleges;
+    expect(collegesOf(caseDoc.id)).toEqual([one.slug, two.slug].sort());
+    expect(collegesOf(eventDoc.id)).toEqual([one.slug, two.slug].sort());
+    expect(collegesOf(draftCaseDoc.id)).toEqual([]);
   });
 });

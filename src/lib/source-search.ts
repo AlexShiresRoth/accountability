@@ -66,3 +66,11 @@ export function scopeForColleges(
   const used = new Set(links.map((l) => l.sourceId));
   return { relatedIds: [...related], unusedIds: allSourceIds.filter((id) => !used.has(id)) };
 }
+
+/** True when every word of the query appears in the text (case, accents and punctuation ignored). */
+export function matchesAllWords(text: string, query: string): boolean {
+  const words = normalize(query).split(" ").filter(Boolean);
+  if (!words.length) return true;
+  const haystack = normalize(text);
+  return words.every((w) => haystack.includes(w));
+}

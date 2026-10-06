@@ -538,6 +538,45 @@ export async function listPublicSources(ctx: PublicContext): Promise<PublicSourc
 }
 
 // ---------------------------------------------------------------------------
+// Source index (/sources)
+// ---------------------------------------------------------------------------
+
+export type PublicSourceIndex = {
+  sources: (PublicSource & { colleges: string[] })[];
+  colleges: { slug: string; name: string; count: number }[];
+};
+
+/**
+ * Public sources, each with the published universities whose pages cite it. Built from the public profile and
+ * case queries themselves, so a source is linked to a university only where the public site shows that link.
+ */
+export async function listPublicSourceIndex(ctx: PublicContext): Promise<PublicSourceIndex> {
+  const [sources, colleges] = await Promise.all([listPublicSources(ctx), searchColleges(ctx)]);
+  const bySource = new Map<string, Set<string>>();
+  const add = (sourceId: string, slug: string) => (bySource.get(sourceId) ?? bySource.set(sourceId, new Set()).get(sourceId)!).add(slug);
+
+  for (const college of colleges) {
+    const profile = await getCollegeProfile(ctx, college.slug);
+    if (!profile) continue;
+    const cases = await Promise.all(profile.cases.map((c) => getCase(ctx, c.slug)));
+    for (const page of [profile, ...cases]) {
+      if (!page) continue;
+      for (const list of Object.values(page.citations)) for (const c of list) add(c.source.id, college.slug);
+      for (const cv of page.coverage) add(cv.source.id, college.slug);
+    }
+    for (const r of profile.reports) add(r.source.id, college.slug);
+  }
+
+  const withColleges = sources.map((src) => ({ ...src, colleges: [...(bySource.get(src.id) ?? [])].sort() }));
+  return {
+    sources: withColleges,
+    colleges: colleges
+      .map((c) => ({ slug: c.slug, name: c.name, count: withColleges.filter((s) => s.colleges.includes(c.slug)).length }))
+      .filter((c) => c.count > 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Sitemap
 // ---------------------------------------------------------------------------
 
