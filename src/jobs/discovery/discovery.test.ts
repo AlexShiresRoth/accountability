@@ -492,4 +492,34 @@ describe("court dockets (CourtListener)", () => {
     expect(await db.select().from(s.cases)).toEqual([]);
     await close();
   });
+
+  it("follows result pages only up to courtPages", async () => {
+    const page = (n: number, next: string | null) =>
+      JSON.stringify({
+        next,
+        results: [{ caseName: `Doe ${n} v. Cornell University`, court: "N.D.N.Y.", dateFiled: "2025-01-01", docket_absolute_url: `/docket/${n}/doe/` }],
+      });
+    const fetchText: FetchText = async (url) => ({
+      status: 200,
+      body: url.includes("cursor=2") ? page(2, "https://www.courtlistener.com/api/rest/v4/search/?cursor=3") : url.includes("cursor=3") ? page(3, null) : page(1, "https://www.courtlistener.com/api/rest/v4/search/?cursor=2"),
+    });
+    const run = async (courtPages?: number) => {
+      const { db, close } = await createTestDb();
+      await fixtures(db).college({ slug: "cornell-university", status: "draft" });
+      const result = await runDiscovery({
+        db,
+        sleep: async () => {},
+        fetchText,
+        courtPages,
+        feeds: [],
+        gdeltQueries: [{ collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" }],
+        sources: { gdelt: false, googleNews: false },
+      });
+      await close();
+      return result.bySource["court dockets: Cornell University"].found;
+    };
+    expect(await run()).toBe(1); // scheduled runs: first page only
+    expect(await run(2)).toBe(2);
+    expect(await run(5)).toBe(3); // stops when there is no next page
+  });
 });

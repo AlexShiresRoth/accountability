@@ -34,13 +34,18 @@ type ApiResult = {
 };
 
 export function parseCourtListener(body: string): DocketLead[] {
-  let data: { results?: ApiResult[] };
+  return parseCourtListenerPage(body).leads;
+}
+
+/** One page of results, and the URL of the next page (cursor pagination), if any. */
+export function parseCourtListenerPage(body: string): { leads: DocketLead[]; next: string | null } {
+  let data: { results?: ApiResult[]; next?: string | null };
   try {
     data = JSON.parse(body);
   } catch {
     throw new Error(`CourtListener returned a non-JSON response: ${body.slice(0, 120)}`);
   }
-  return (data.results ?? [])
+  const leads = (data.results ?? [])
     .filter((r) => r.docket_absolute_url && r.caseName)
     .map((r) => {
       const court = r.court_citation_string || r.court || null;
@@ -53,6 +58,7 @@ export function parseCourtListener(body: string): DocketLead[] {
         docketNumber,
       };
     });
+  return { leads, next: data.next ?? null };
 }
 
 export const isCourtListenerUrl = (url: string) => {

@@ -6,7 +6,7 @@ import type { Database } from "@/db/types";
 import type { CoverageTopic } from "@/lib/enums";
 import { silentLogger, type Logger } from "@/lib/log";
 import { eq, inArray } from "drizzle-orm";
-import { courtListenerUrl, parseCourtListener } from "./courtlistener";
+import { courtListenerUrl, parseCourtListenerPage } from "./courtlistener";
 import { parseFeed } from "./feed-parser";
 import { fetchGdelt } from "./gdelt";
 import { googleNewsUrl, headlineKey, parseGoogleNews } from "./google-news";
@@ -38,6 +38,8 @@ export type DiscoveryOptions = {
   sources?: { gdelt?: boolean; googleNews?: boolean; courtDockets?: boolean };
   /** Court-docket lookback in days. Defaults to googleNewsDays; dockets stay relevant far longer than news. */
   courtDays?: number;
+  /** Result pages to read per institution's docket search (about 20 dockets a page). 1 for scheduled runs. */
+  courtPages?: number;
   /** "Today", for the court-docket lookback window (injectable for tests). */
   now?: Date;
   /** Recorded on the run: "cron", "cli" or "test". */
@@ -334,13 +336,17 @@ async function discover(
     const label = `court dockets: ${query.courtNames.join(" / ")}`;
     const cid = collegeId(query.collegeSlug);
     if (!cid) continue;
-    if (courtRequests++ > 0) await sleep(COURTLISTENER_INTERVAL_MS);
     try {
-      const { status, body } = await fetchText(
-        courtListenerUrl(query.courtNames, since),
-      );
-      if (status !== 200) throw new Error(`HTTP ${status}`);
-      const leads = parseCourtListener(body);
+      const leads = [];
+      let url: string | null = courtListenerUrl(query.courtNames, since);
+      for (let page = 0; url && page < (opts.courtPages ?? 1); page++) {
+        if (courtRequests++ > 0) await sleep(COURTLISTENER_INTERVAL_MS);
+        const { status, body } = await fetchText(url);
+        if (status !== 200) throw new Error(`HTTP ${status}`);
+        const parsed = parseCourtListenerPage(body);
+        leads.push(...parsed.leads);
+        url = parsed.next;
+      }
       addCount(bySource, label, leads.length);
       for (const d of leads) {
         candidates.push({
