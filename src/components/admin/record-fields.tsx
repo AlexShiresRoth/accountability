@@ -163,7 +163,14 @@ export function RecordFields({ recordKey, values = {}, options }: { recordKey: C
             options={opts(coverageScopes, (sc) => (sc === "institutional" ? "Institution-level" : "About a specific case"))}
             hint="Case-specific coverage is only published once the linked case is verified."
           />
-          <SelectField name="caseId" label="Case (if case-specific)" defaultValue={v("caseId")} placeholder="—" options={options.cases.map((c) => ({ value: c.id, label: c.title }))} />
+          <SelectField
+            name="caseId"
+            label="Case (if case-specific)"
+            defaultValue={v("caseId")}
+            placeholder="—"
+            options={options.cases.map((c) => ({ value: c.id, label: c.title }))}
+            hint="Choosing a case makes this case-specific coverage. Choose “—” to make it institution-level again."
+          />
           <SelectField
             name="institutionActionId"
             label="Related timeline entry (optional)"

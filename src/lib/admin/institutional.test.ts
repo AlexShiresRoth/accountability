@@ -92,10 +92,29 @@ describe("coverage", () => {
     expect(await changeStatus(db, { key: "college_coverage", id, to: "verified", actor })).toEqual({ ok: true });
   });
 
-  it("drops a case link when the scope is institutional, and requires one for case scope", () => {
+  it("treats a chosen case as case-specific coverage, and requires a case for case scope", () => {
     const base = { sourceId: crypto.randomUUID(), topic: "lawsuit", summary: "Reports on a civil suit against the university." };
-    expect(coverageSchema.parse({ ...base, scope: "institutional", caseId: crypto.randomUUID() }).caseId).toBeNull();
+    const caseId = crypto.randomUUID();
+    // Choosing a case with "Institution-level" still selected used to drop the case silently.
+    expect(coverageSchema.parse({ ...base, scope: "institutional", caseId })).toMatchObject({ scope: "case", caseId });
+    expect(coverageSchema.parse({ ...base, scope: "institutional", caseId: "" })).toMatchObject({ scope: "institutional", caseId: null });
     expect(coverageSchema.safeParse({ ...base, scope: "case" }).success).toBe(false);
+  });
+
+  it("saves a case chosen on an existing institution-level entry, and clearing it makes the entry institutional again", async () => {
+    const college = await f.college();
+    const article = await f.source({ type: "reputable_journalism" });
+    const c = await f.case({ collegeIds: [college.id] });
+    const form = { sourceId: article.id, topic: "lawsuit", summary: "Reports on a civil suit against the university." };
+    const id = ((await createCollegeRecord(db, "college_coverage", college.id, coverageSchema.parse({ ...form, scope: "institutional" }), actor)) as { value: string }).value;
+    const stored = async () => (await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.id, id)))[0];
+
+    // The researcher picks the case but leaves Scope on "Institution-level", then saves.
+    expect(await updateCollegeRecord(db, "college_coverage", id, coverageSchema.parse({ ...form, scope: "institutional", caseId: c.id }), actor)).toMatchObject({ ok: true });
+    expect(await stored()).toMatchObject({ scope: "case", caseId: c.id });
+
+    expect(await updateCollegeRecord(db, "college_coverage", id, coverageSchema.parse({ ...form, scope: "institutional", caseId: "" }), actor)).toMatchObject({ ok: true });
+    expect(await stored()).toMatchObject({ scope: "institutional", caseId: null });
   });
 
   it("reports a missing referenced record instead of crashing", async () => {

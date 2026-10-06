@@ -186,6 +186,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           label="Case (if case-specific)"
                           placeholder="—"
                           options={cases.map((k) => ({ value: k.id, label: k.title }))}
+                          hint="Choosing a case makes this case-specific coverage."
                         />
                         <SelectField
                           name="sourceType"
