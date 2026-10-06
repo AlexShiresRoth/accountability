@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalize, searchSources, type SourceOption } from "./source-search";
+import { matchesAllWords, normalize, searchSources, type SourceOption } from "./source-search";
 
 const src = (id: string, o: Partial<SourceOption>): SourceOption => ({
   id,
@@ -55,5 +55,19 @@ describe("source search", () => {
 
   it("reports the total when results are capped", () => {
     expect(searchSources(sources, "report", 1)).toMatchObject({ total: 3, results: [{ id: "utah26" }] });
+  });
+});
+
+describe("matchesAllWords", () => {
+  it("requires every word, in any order, ignoring case, accents and punctuation", () => {
+    expect(matchesAllWords("2026 Annual Security Report, Cornell University", "cornell 2026")).toBe(true);
+    expect(matchesAllWords("2026 Annual Security Report, Cornell University", "cornell 2025")).toBe(false);
+    expect(matchesAllWords("Política de Título IX", "titulo ix")).toBe(true);
+    expect(matchesAllWords("Doe v. Cornell", "doe-v")).toBe(true);
+  });
+
+  it("matches everything for an empty or blank query", () => {
+    expect(matchesAllWords("anything", "")).toBe(true);
+    expect(matchesAllWords("anything", "  ,  ")).toBe(true);
   });
 });

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SourceDetails } from "@/components/cite";
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
-import { listPublicSources } from "@/lib/public";
+import { listPublicSourceIndex } from "@/lib/public";
 import { pageMetadata } from "@/lib/seo";
-import { sourceTypes, type SourceType } from "@/lib/source-types";
+import { sourceTypes } from "@/lib/source-types";
+import { SourceIndex } from "@/components/source-index";
 
 export const revalidate = 3600;
 
@@ -16,10 +16,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 export default async function SourcesPage() {
-  const sources = await listPublicSources();
-  const byType = Object.keys(sourceTypes)
-    .map((type) => [type as SourceType, sources.filter((src) => src.type === type)] as const)
-    .filter(([, list]) => list.length);
+  const index = await listPublicSourceIndex();
 
   return (
     <>
@@ -63,26 +60,7 @@ export default async function SourcesPage() {
           <h2 id="index" className="text-2xl">
             Source index
           </h2>
-          {byType.length === 0 ? (
-            <p className="mt-3 text-ink-muted">No verified sources have been published yet.</p>
-          ) : (
-            <div className="mt-6 space-y-10">
-              {byType.map(([type, list]) => (
-                <div key={type}>
-                  <h3 className="text-lg">
-                    {sourceTypes[type].label} <span className="font-sans text-sm font-normal text-ink-muted">({list.length})</span>
-                  </h3>
-                  <ul className="mt-3 divide-y divide-rule border-y border-rule">
-                    {list.map((src) => (
-                      <li key={src.id} className="py-4">
-                        <SourceDetails source={src} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
+          <SourceIndex index={index} />
         </section>
       </Container>
     </>
