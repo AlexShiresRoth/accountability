@@ -14,7 +14,7 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = {
   ...pageMetadata({ title: site.name, description: site.description, path: "/" }),
-  title: { absolute: `${site.name}: campus sexual violence statistics, institutional response and resources` },
+  title: { absolute: `${site.name}: Campus Sexual Violence Data & Title IX` },
 };
 
 const measures = [

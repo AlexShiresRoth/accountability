@@ -25,24 +25,48 @@ export const absoluteUrl = (path: string) => `${siteUrl()}${path}`;
  * Title, description, canonical URL and Open Graph tags for one page.
  * Open Graph is set in full on every page because a page's `openGraph` replaces the layout's.
  */
+/** The site-wide share card (src/app/opengraph-image.tsx). Pages with their own card override it. */
+const defaultShareImage = { url: "/opengraph-image", width: 1200, height: 630, alt: `${site.name}: ${site.description}` };
+
+/** Search results show roughly 155 characters of a description; cut longer ones at a word boundary. */
+export function shortDescription(text: string, max = 155): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max - 1);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > max * 0.6 ? cut.lastIndexOf(" ") : cut.length).replace(/[,;:.\s]+$/, "")}…`;
+}
+
+/**
+ * Title, description, canonical URL and Open Graph / X tags for one page.
+ * Open Graph is set in full on every page because a page's `openGraph` replaces the layout's, image included.
+ * `absoluteTitle` skips the " — Campus Accountability" suffix, for pages whose own title is already long.
+ * `ownShareImage`: the page has its own opengraph-image file, which an image set here would override.
+ */
 export function pageMetadata({
   title,
   description,
   path,
   type = "website",
   noindex = false,
+  absoluteTitle = false,
+  ownShareImage = false,
 }: {
   title: string;
   description: string;
   path: string;
   type?: "website" | "article";
   noindex?: boolean;
+  absoluteTitle?: boolean;
+  ownShareImage?: boolean;
 }): Metadata {
+  const desc = shortDescription(description);
+  const images = ownShareImage ? {} : { images: [defaultShareImage] };
   return {
-    title,
-    description,
+    title: absoluteTitle ? { absolute: title } : title,
+    description: desc,
     alternates: { canonical: path },
-    openGraph: { siteName: site.name, locale: "en_US", type, title, description, url: path },
+    openGraph: { siteName: site.name, locale: "en_US", type, title, description: desc, url: path, ...images },
+    twitter: { card: "summary_large_image", title, description: desc, ...images },
     ...(noindex && { robots: { index: false, follow: true } }),
   };
 }
@@ -53,7 +77,7 @@ export function pageMetadata({
 
 export type JsonLdObject = { "@context"?: "https://schema.org"; "@type": string; [key: string]: unknown };
 
-export const publisher = () => ({ "@type": "Organization", name: site.name, url: siteUrl() });
+export const publisher = () => ({ "@type": "Organization", name: site.name, url: siteUrl(), logo: absoluteUrl("/icon-512.png") });
 
 export function breadcrumbs(items: { name: string; path: string }[]): JsonLdObject {
   return {
