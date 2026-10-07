@@ -313,7 +313,13 @@ describe("researcher-only data never leaks", () => {
     await f.statistic({ cleryReportId: report.id, internalNotes: secret });
     const action = await f.action({ collegeId: college.id, internalNotes: secret, reviewedBy: reviewer });
     await f.citation({ sourceId: source.id, institutionActionId: action.id });
-    const c = await f.case({ collegeIds: [college.id], internalNotes: secret });
+    const c = await f.case({
+      collegeIds: [college.id],
+      internalNotes: secret,
+      checkNotes: secret,
+      searchTerms: ["PRIVATE-SEARCH-TERM"],
+      nextCheckOn: "2031-01-01",
+    });
     await f.event({ caseId: c.id, internalNotes: secret, reviewedBy: reviewer });
 
     const payload = JSON.stringify([
@@ -321,9 +327,13 @@ describe("researcher-only data never leaks", () => {
       await getCase(ctx, c.slug),
       await listPublicSources(ctx),
       await searchColleges(ctx),
+      await listPublicSourceIndex(ctx),
     ]);
     expect(payload).not.toContain(secret);
     expect(payload).not.toContain(reviewer);
+    // Case monitoring fields are researcher-only.
+    expect(payload).not.toContain("PRIVATE-SEARCH-TERM");
+    expect(payload).not.toContain("2031-01-01");
   });
 });
 

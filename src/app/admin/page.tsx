@@ -2,7 +2,9 @@ import Link from "next/link";
 import { DiscoveryRuns } from "@/components/admin/discovery-runs";
 import { StatusBadge, statusLabels } from "@/components/admin/status";
 import { db } from "@/db";
+import { casesDueForCheck } from "@/lib/admin/monitoring";
 import { dashboard, recentDiscoveryRuns } from "@/lib/admin/queries";
+import { formatDate } from "@/lib/dates";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { reviewTables, type ReviewTableKey } from "@/lib/admin/workflow";
 import { verificationStatuses } from "@/lib/enums";
@@ -11,7 +13,7 @@ export const metadata = { title: "Dashboard" };
 
 export default async function AdminDashboard() {
   await requireResearcherPage();
-  const [{ counts, inbox, recent, awaiting }, runs] = await Promise.all([dashboard(db), recentDiscoveryRuns(db)]);
+  const [{ counts, inbox, recent, awaiting }, runs, dueCases] = await Promise.all([dashboard(db), recentDiscoveryRuns(db), casesDueForCheck(db)]);
 
   return (
     <div className="space-y-10">
@@ -44,6 +46,31 @@ export default async function AdminDashboard() {
                   <span className="text-sm text-ink-muted">{a.kind}</span> · <Link href={a.href}>{a.label}</Link>
                 </span>
                 {a.createdBy && <span className="text-sm text-ink-muted">entered by {a.createdBy}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="cases-to-check">
+        <h2 id="cases-to-check" className="text-xl">
+          Cases to check
+        </h2>
+        {dueCases.length === 0 ? (
+          <p className="mt-2 text-ink-muted">No case is due for a check.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-rule border-y border-rule">
+            {dueCases.map((c) => (
+              <li key={c.id} className="py-2">
+                <Link href={`/admin/cases/${c.id}`}>{c.title}</Link>
+                <span className="block text-sm text-ink-muted">
+                  {c.reason === "scheduled" && c.nextCheckOn
+                    ? `Scheduled check: ${formatDate(c.nextCheckOn)}`
+                    : c.reason === "never_checked"
+                      ? "Never checked"
+                      : `Last checked ${formatDate(c.lastCheckedAt!.toISOString().slice(0, 10))}`}
+                  {c.checkNotes && ` · ${c.checkNotes.length > 100 ? `${c.checkNotes.slice(0, 99)}…` : c.checkNotes}`}
+                </span>
               </li>
             ))}
           </ul>

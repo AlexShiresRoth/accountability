@@ -36,6 +36,7 @@ import {
   updateSource,
   type MutationResult,
 } from "@/lib/admin/records";
+import { markCaseChecked, updateCaseMonitoring } from "@/lib/admin/monitoring";
 import { requireResearcher } from "@/lib/admin/session";
 import {
   SESSION_COOKIE,
@@ -57,6 +58,7 @@ import {
   resourceSchema,
   responseSchema,
   footnoteSchema,
+  caseMonitoringSchema,
   formValues,
   problemsOf,
   reportSchema,
@@ -333,6 +335,26 @@ export async function updateCaseAction(id: string, _prev: FormState, form: FormD
   const parsed = parseCase(form);
   if (!parsed.success) return { problems: problemsOf(parsed.error) };
   return toState(await updateCase(db, id, parsed.data, name), "Saved.");
+}
+
+/** Researcher-only monitoring fields: no public page changes, so nothing is revalidated publicly. */
+export async function updateCaseMonitoringAction(caseId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  await requireResearcher();
+  const parsed = caseMonitoringSchema.safeParse(formValues(form));
+  if (!parsed.success) return { problems: problemsOf(parsed.error) };
+  const result = await updateCaseMonitoring(db, caseId, parsed.data);
+  if (!result.ok) return { problems: result.problems };
+  revalidatePath(`/admin/cases/${caseId}`);
+  return { ok: true, message: result.unchanged ? "No changes to save." : "Monitoring saved." };
+}
+
+export async function markCaseCheckedAction(caseId: string): Promise<FormState> {
+  await requireResearcher();
+  const result = await markCaseChecked(db, caseId);
+  if (!result.ok) return { problems: result.problems };
+  revalidatePath(`/admin/cases/${caseId}`);
+  revalidatePath("/admin");
+  return { ok: true, message: "Marked as checked today." };
 }
 
 export async function createCaseEventAction(caseId: string, _prev: FormState, form: FormData): Promise<FormState> {

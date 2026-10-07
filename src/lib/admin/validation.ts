@@ -269,6 +269,22 @@ export const eventSchema = z.object({
 export type EventInput = z.infer<typeof eventSchema>;
 
 /** Flattens zod issues into readable messages. */
+/** Case monitoring (researcher-only). Search terms: one per line or comma-separated. */
+export const caseMonitoringSchema = z.object({
+  searchTerms: z
+    .string()
+    .optional()
+    .transform((v) => [...new Set((v ?? "").split(/[\n,]/).map((t) => t.replace(/"/g, "").trim()).filter(Boolean))])
+    .pipe(
+      z
+        .array(z.string().min(3, "Each search term needs at least 3 characters.").max(80, "Keep each search term under 80 characters."))
+        .max(8, "Use at most 8 search terms."),
+    ),
+  nextCheckOn: isoDate,
+  checkNotes: optional(2000),
+});
+export type CaseMonitoringInput = z.infer<typeof caseMonitoringSchema>;
+
 export function problemsOf(error: z.ZodError): string[] {
   return error.issues.map((i) => i.message);
 }
