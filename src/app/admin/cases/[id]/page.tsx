@@ -8,6 +8,8 @@ import { PublishedEditWarning, TextArea, TextField } from "@/components/admin/fi
 import { CitationsPanel, DeletePanel, StatusPanel } from "@/components/admin/panels";
 import { StatusBadge } from "@/components/admin/status";
 import { db } from "@/db";
+import { CaseMonitoring } from "@/components/admin/case-monitoring";
+import { caseInboxCount } from "@/lib/admin/monitoring";
 import { getCaseAdmin, listColleges } from "@/lib/admin/queries";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { formatDate } from "@/lib/dates";
@@ -17,7 +19,7 @@ export const metadata = { title: "Case" };
 export default async function CaseAdmin({ params }: PageProps<"/admin/cases/[id]">) {
   await requireResearcherPage();
   const id = (await params).id;
-  const [data, colleges] = await Promise.all([getCaseAdmin(db, id), listColleges(db)]);
+  const [data, colleges, inboxCount] = await Promise.all([getCaseAdmin(db, id), listColleges(db), caseInboxCount(db, id)]);
   if (!data) notFound();
   const { record, events, corrections, coverage } = data;
 
@@ -45,6 +47,7 @@ export default async function CaseAdmin({ params }: PageProps<"/admin/cases/[id]
         </div>
         <div className="space-y-4">
           <StatusPanel recordKey="case" record={record} />
+          <CaseMonitoring record={record} inboxCount={inboxCount} today={new Date().toISOString().slice(0, 10)} />
           <DeletePanel recordKey="case" id={record.id} status={record.status} redirectTo="/admin/cases" />
         </div>
       </div>

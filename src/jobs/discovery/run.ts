@@ -5,7 +5,7 @@ import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import type { CoverageTopic } from "@/lib/enums";
 import { silentLogger, type Logger } from "@/lib/log";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { courtListenerUrl, parseCourtListenerPage } from "./courtlistener";
 import { parseFeed } from "./feed-parser";
 import { fetchGdelt } from "./gdelt";
@@ -35,11 +35,13 @@ export type DiscoveryOptions = {
   feeds?: FeedSource[];
   /** Exact-name queries used for GDELT and Google News. */
   gdeltQueries?: CollegeQuery[];
-  sources?: { gdelt?: boolean; googleNews?: boolean; courtDockets?: boolean };
+  sources?: { gdelt?: boolean; googleNews?: boolean; courtDockets?: boolean; caseNews?: boolean };
   /** Court-docket lookback in days. Defaults to googleNewsDays; dockets stay relevant far longer than news. */
   courtDays?: number;
   /** Result pages to read per institution's docket search (about 20 dockets a page). 1 for scheduled runs. */
   courtPages?: number;
+  /** Case-specific news searches. Defaults to every non-rejected case with search terms (see loadCaseQueries). */
+  caseQueries?: CaseQuery[];
   /** "Today", for the court-docket lookback window (injectable for tests). */
   now?: Date;
   /** Recorded on the run: "cron", "cli" or "test". */
@@ -50,12 +52,25 @@ export type DiscoveryOptions = {
 
 export type RunOutcome = "ok" | "partial" | "failed";
 
+/** A case-specific news search: the case's own terms, together with its school's names. */
+export type CaseQuery = {
+  caseId: string;
+  /** For labels and logs. */
+  title: string;
+  /** Where results are filed: the case's first school that this run covers. */
+  collegeSlug: string;
+  names: string[];
+  terms: string[];
+};
+
 /** Stored as ingestion_run.summary. */
 export type RunSummary = {
   bySource: Record<string, { found: number; relevant: number }>;
   duplicateHeadlines: number;
   refiled: number;
   droppedNoHeadlineName: number;
+  /** Inbox items marked as a possible update to a case (new from case searches, or matched to existing ones). */
+  caseUpdates?: number;
   errors: string[];
 };
 
@@ -73,6 +88,8 @@ export type DiscoveryResult = {
   refiled: number;
   /** Search results dropped because their headline doesn't name an institution configured with headlineMustName. */
   droppedNoHeadlineName: number;
+  /** Inbox items marked as a possible update to a case. */
+  caseUpdates: number;
 };
 
 type Candidate = {
@@ -82,8 +99,9 @@ type Candidate = {
   publishedAt: Date | null;
   snippet: string | null;
   collegeId: string;
+  caseId?: string | null;
   suggestedTopic: CoverageTopic;
-  via: "feed" | "gdelt" | "google_news" | "court";
+  via: "feed" | "gdelt" | "google_news" | "court" | "case_news";
 };
 
 export const USER_AGENT =
@@ -128,6 +146,7 @@ export async function runDiscovery(
       duplicateHeadlines: r.duplicateHeadlines,
       refiled: r.refiled,
       droppedNoHeadlineName: r.droppedNoHeadlineName,
+      caseUpdates: r.caseUpdates,
       errors: r.errors,
     };
     await db
@@ -154,6 +173,7 @@ export async function runDiscovery(
       duplicateHeadlines: r.duplicateHeadlines,
       refiled: r.refiled,
       droppedNoHeadlineName: r.droppedNoHeadlineName,
+      caseUpdates: r.caseUpdates,
       errorCount: r.errors.length,
     });
     return { runId: run.id, outcome, durationMs, ...r };
@@ -325,6 +345,38 @@ async function discover(
     }
   }
 
+  // Case-specific searches: each tracked case's own terms with its school's names, to catch updates on known cases.
+  const caseQueries = (sources.caseNews ?? useGoogleNews) ? (opts.caseQueries ?? (await loadCaseQueries(db, gdeltQueries))) : [];
+  for (const query of caseQueries) {
+    const label = `case news: ${query.title}`;
+    const cid = collegeIdBySlug.get(query.collegeSlug);
+    if (!cid || !query.terms.length) continue;
+    if (googleRequests++ > 0) await sleep(GOOGLE_NEWS_INTERVAL_MS);
+    try {
+      const { status, body } = await fetchText(
+        googleNewsUrl(query.names, query.terms.map((t) => `"${t.replace(/"/g, "")}"`), googleNewsDays),
+      );
+      if (status !== 200) throw new Error(`HTTP ${status}`);
+      const items = parseGoogleNews(body);
+      addCount(bySource, label, items.length);
+      for (const i of items) {
+        candidates.push({
+          url: i.url,
+          title: i.title,
+          publisher: i.publisher,
+          publishedAt: i.publishedAt,
+          snippet: null,
+          collegeId: cid,
+          caseId: query.caseId,
+          suggestedTopic: suggestTopic(i.title ?? ""),
+          via: "case_news",
+        });
+      }
+    } catch (err) {
+      fail(label, err);
+    }
+  }
+
   // Federal court dockets naming the institution as a party (case leads).
   const since = new Date(
     now.getTime() - (opts.courtDays ?? googleNewsDays) * 86_400_000,
@@ -379,7 +431,7 @@ async function discover(
     }))
     .filter((x): x is { id: string; re: RegExp } => Boolean(x.id));
   for (const c of candidates) {
-    if (c.via === "feed" || c.via === "court" || !c.title) continue;
+    if (c.via === "feed" || c.via === "court" || c.via === "case_news" || !c.title) continue;
     const named = headlineSchools
       .filter((h) => h.re.test(c.title!))
       .map((h) => h.id);
@@ -403,7 +455,7 @@ async function discover(
   for (let i = candidates.length - 1; i >= 0; i--) {
     const c = candidates[i];
     const re =
-      c.via === "feed" || c.via === "court"
+      c.via === "feed" || c.via === "court" || c.via === "case_news"
         ? undefined
         : strict.get(c.collegeId);
     if (re && !re.test(c.title ?? "")) {
@@ -414,36 +466,61 @@ async function discover(
 
   // Google News links are opaque, so the same story found via a feed or GDELT (or already in the inbox)
   // is matched by headline instead of URL.
+  // A case-search result that duplicates something already found (this run or in the inbox) is not added
+  // again: the existing item is marked as a possible update to the case instead, while it is still new.
   const knownHeadlines = new Set<string>();
+  const inboxNewByHeadline = new Map<string, string>(); // key → id of a still-new inbox item
   const collegeIds = [...collegeIdBySlug.values()];
   if (collegeIds.length) {
     const existing = await db
       .select({
+        id: s.candidateItems.id,
         title: s.candidateItems.title,
         collegeId: s.candidateItems.collegeId,
+        status: s.candidateItems.status,
       })
       .from(s.candidateItems)
       .where(inArray(s.candidateItems.collegeId, collegeIds));
     for (const e of existing) {
       const k = headlineKey(e.title);
-      if (k) knownHeadlines.add(`${e.collegeId}|${k}`);
+      if (!k) continue;
+      knownHeadlines.add(`${e.collegeId}|${k}`);
+      if (e.status === "new") inboxNewByHeadline.set(`${e.collegeId}|${k}`, e.id);
     }
   }
+  const thisRunByHeadline = new Map<string, Candidate>();
   for (const c of candidates) {
     const k = headlineKey(c.title);
-    if (k && c.via !== "google_news") knownHeadlines.add(`${c.collegeId}|${k}`);
+    if (k && c.via !== "google_news" && c.via !== "case_news") {
+      knownHeadlines.add(`${c.collegeId}|${k}`);
+      thisRunByHeadline.set(`${c.collegeId}|${k}`, c);
+    }
   }
   let duplicateHeadlines = 0;
+  const tagExisting = new Map<string, string>(); // inbox item id → case id
   const kept = candidates.filter((c) => {
-    if (c.via !== "google_news") return true;
+    if (c.via !== "google_news" && c.via !== "case_news") return true;
     const k = headlineKey(c.title);
     if (!k) return true;
     const key = `${c.collegeId}|${k}`;
+    if (c.via === "case_news" && c.caseId) {
+      const sameRun = thisRunByHeadline.get(key);
+      if (sameRun) {
+        sameRun.caseId ??= c.caseId;
+        return false;
+      }
+      const inboxId = inboxNewByHeadline.get(key);
+      if (inboxId) {
+        tagExisting.set(inboxId, c.caseId);
+        return false;
+      }
+    }
     if (knownHeadlines.has(key)) {
       duplicateHeadlines++;
       return false;
     }
     knownHeadlines.add(key);
+    thisRunByHeadline.set(key, c);
     return true;
   });
 
@@ -451,7 +528,10 @@ async function discover(
   const unique = new Map<string, Candidate>();
   for (const { via: _via, ...c } of kept) {
     const url = canonicalizeUrl(c.url);
-    if (url && !unique.has(url)) unique.set(url, { ...c, url, via: _via });
+    if (!url) continue;
+    const seen = unique.get(url);
+    if (seen) seen.caseId ??= c.caseId;
+    else unique.set(url, { ...c, url, via: _via });
   }
 
   const inserted = unique.size
@@ -460,12 +540,32 @@ async function discover(
         .values(
           [...unique.values()].map(({ via: _via, ...c }) => ({
             ...c,
+            caseId: c.caseId ?? null,
             ingestionRunId: runId,
           })),
         )
         .onConflictDoNothing({ target: s.candidateItems.url })
-        .returning({ id: s.candidateItems.id })
+        .returning({ id: s.candidateItems.id, url: s.candidateItems.url, caseId: s.candidateItems.caseId })
     : [];
+
+  // Case results whose link was already in the inbox (so not inserted): mark that item instead.
+  const insertedUrls = new Set(inserted.map((r) => r.url));
+  const urlTags = [...unique.values()].filter((c) => c.caseId && !insertedUrls.has(c.url));
+  for (const c of urlTags) {
+    const updated = await db
+      .update(s.candidateItems)
+      .set({ caseId: c.caseId })
+      .where(and(eq(s.candidateItems.url, c.url), isNull(s.candidateItems.caseId), eq(s.candidateItems.status, "new")))
+      .returning({ id: s.candidateItems.id });
+    if (updated.length) tagExisting.set(updated[0].id, c.caseId!);
+  }
+  for (const [id, caseId] of tagExisting) {
+    await db
+      .update(s.candidateItems)
+      .set({ caseId })
+      .where(and(eq(s.candidateItems.id, id), isNull(s.candidateItems.caseId), eq(s.candidateItems.status, "new")));
+  }
+  const caseUpdates = inserted.filter((r) => r.caseId).length + tagExisting.size;
 
 
   return {
@@ -476,7 +576,31 @@ async function discover(
     duplicateHeadlines,
     refiled,
     droppedNoHeadlineName,
+    caseUpdates,
   };
+}
+
+/**
+ * Every non-rejected, non-demo case with search terms, filed under its first school that this run covers.
+ * The search uses all of that case's covered schools' names, so a story naming any of them matches.
+ */
+export async function loadCaseQueries(db: Database, colleges: CollegeQuery[]): Promise<CaseQuery[]> {
+  const rows = await db
+    .select({ caseId: s.cases.id, title: s.cases.title, terms: s.cases.searchTerms, slug: s.colleges.slug })
+    .from(s.cases)
+    .innerJoin(s.caseColleges, eq(s.caseColleges.caseId, s.cases.id))
+    .innerJoin(s.colleges, eq(s.colleges.id, s.caseColleges.collegeId))
+    .where(and(ne(s.cases.status, "rejected"), eq(s.cases.isDemo, false), sql`cardinality(${s.cases.searchTerms}) > 0`))
+    .orderBy(s.cases.title, s.colleges.slug);
+  const byCase = new Map<string, CaseQuery>();
+  for (const r of rows) {
+    const college = colleges.find((c) => c.collegeSlug === r.slug);
+    if (!college) continue;
+    const q = byCase.get(r.caseId);
+    if (q) q.names.push(...college.names.filter((n) => !q.names.includes(n)));
+    else byCase.set(r.caseId, { caseId: r.caseId, title: r.title, collegeSlug: r.slug, names: [...college.names], terms: r.terms });
+  }
+  return [...byCase.values()];
 }
 
 function addCount(

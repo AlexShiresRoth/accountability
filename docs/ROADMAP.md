@@ -76,6 +76,17 @@ Deferred until the inbox exists, since candidates are only useful once researche
 ### 8. README
 Setup, architecture, editorial principles, and how verified data is added.
 
+## Case monitoring
+
+- [x] Case-specific news searches: each case's search terms (admin → case → Monitoring) are searched on Google News
+      with its school names on every discovery run; matches are tagged "Possible update to" in the inbox, and items
+      already there are tagged instead of duplicated (migration 0004).
+- [x] Check-in reminders: last checked / next check date / notes per case, "Mark checked today", and a "Cases to
+      check" list on the dashboard (due on the next-check date, or 30 days after the last check).
+- [x] Migration 0004 applied to production (2026-10-07).
+- [ ] Federal docket updates for saved CourtListener dockets (needs a CourtListener API token).
+- [ ] Inbox action that turns an item into a draft case event with its source cited.
+
 ## Public roadmap
 
 `/roadmap` is generated from `src/content/roadmap.ts`. Update it when an item starts, ships, or changes; the home

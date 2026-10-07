@@ -11,7 +11,7 @@ import { searchTermGroups } from "./terms";
 import { courtListenerUrl, isCourtListenerUrl, parseCourtListener } from "./courtlistener";
 import { googleNewsUrl, headlineKey, isGoogleNewsUrl, parseGoogleNews, stripPublisherSuffix } from "./google-news";
 import { isRelevant, suggestTopic } from "./relevance";
-import { runDiscovery, type FetchText } from "./run";
+import { loadCaseQueries, runDiscovery, type FetchText } from "./run";
 import { canonicalizeUrl } from "./urls";
 
 /** Test fakes answer only the first search-term group, so each fixture is returned once per query. */
@@ -521,5 +521,83 @@ describe("court dockets (CourtListener)", () => {
     expect(await run()).toBe(1); // scheduled runs: first page only
     expect(await run(2)).toBe(2);
     expect(await run(5)).toBe(3); // stops when there is no next page
+  });
+});
+
+describe("case-specific news searches", () => {
+  const cornell = { collegeSlug: "cornell-university", names: ["Cornell University"], courtNames: ["Cornell University"], shortName: "Cornell" };
+  const isCaseQuery = (url: string) => decodeURIComponent(url.replace(/\+/g, " ")).includes('"Chi Phi"');
+
+  it("searches each case's terms with its school's names, skipping rejected cases and cases without terms", async () => {
+    const { db, close } = await createTestDb();
+    const f = fixtures(db);
+    const college = await f.college({ slug: "cornell-university", name: "Cornell University" });
+    const tracked = await f.case({ collegeIds: [college.id], title: "Chi Phi case", searchTerms: ["Chi Phi"] });
+    await f.case({ collegeIds: [college.id], title: "No terms" });
+    await f.case({ collegeIds: [college.id], title: "Rejected", searchTerms: ["Rejected term"], status: "rejected" });
+    expect(await loadCaseQueries(db, [cornell])).toEqual([
+      { caseId: tracked.id, title: "Chi Phi case", collegeSlug: "cornell-university", names: ["Cornell University"], terms: ["Chi Phi"] },
+    ]);
+    // A school this run doesn't cover is left out.
+    expect(await loadCaseQueries(db, [])).toEqual([]);
+    await close();
+  });
+
+  it("files case results as possible updates, and marks matching items instead of duplicating them", async () => {
+    const { db, close } = await createTestDb();
+    const f = fixtures(db);
+    const college = await f.college({ slug: "cornell-university", name: "Cornell University", status: "draft" });
+    const c = await f.case({ collegeIds: [college.id], searchTerms: ["Chi Phi"] });
+    await db.insert(s.candidateItems).values([
+      { url: "https://news.example/in-inbox", title: "Judge sets hearing date", collegeId: college.id },
+      { url: "https://news.example/dismissed", title: "Old dismissed story", collegeId: college.id, status: "dismissed" },
+    ]);
+
+    const school = `<rss><channel>${gnItem("Cornell fraternity lawsuit moves forward", "The Sun", "SCHOOL1")}</channel></rss>`;
+    const caseNews = `<rss><channel>${[
+      gnItem("Cornell fraternity lawsuit moves forward", "Syracuse.com", "CASE-DUP"), // same story as the school search
+      gnItem("Chi Phi chapter suspended", "Ithaca Voice", "CASE-NEW"),
+      gnItem("Judge sets hearing date", "WSYR", "CASE-INBOX"), // already in the inbox, still new
+      gnItem("Old dismissed story", "WSYR", "CASE-DISMISSED"), // already triaged
+    ].join("")}</channel></rss>`;
+    const result = await runDiscovery({
+      db,
+      sleep: async () => {},
+      fetchText: async (url) => ({
+        status: 200,
+        body: isCaseQuery(url) ? caseNews : url.includes("news.google.com") && isFirstGroup(url) ? school : rss(""),
+      }),
+      feeds: [],
+      gdeltQueries: [cornell],
+      sources: { gdelt: false, courtDockets: false },
+    });
+
+    const rows = await db.select().from(s.candidateItems);
+    const byTitle = (t: string) => rows.filter((r) => r.title === t);
+    expect(byTitle("Cornell fraternity lawsuit moves forward")).toEqual([expect.objectContaining({ caseId: c.id })]);
+    expect(byTitle("Chi Phi chapter suspended")).toEqual([expect.objectContaining({ caseId: c.id, collegeId: college.id })]);
+    expect(byTitle("Judge sets hearing date")).toEqual([expect.objectContaining({ url: "https://news.example/in-inbox", caseId: c.id })]);
+    expect(byTitle("Old dismissed story")).toEqual([expect.objectContaining({ status: "dismissed", caseId: null })]);
+    expect(result.caseUpdates).toBe(3);
+    expect(result.bySource["case news: " + c.title]).toEqual({ found: 4, relevant: 4 });
+    await close();
+  });
+
+  it("can be switched off", async () => {
+    const { db, close } = await createTestDb();
+    const f = fixtures(db);
+    const college = await f.college({ slug: "cornell-university", name: "Cornell University" });
+    await f.case({ collegeIds: [college.id], searchTerms: ["Chi Phi"] });
+    const requested: string[] = [];
+    await runDiscovery({
+      db,
+      sleep: async () => {},
+      fetchText: async (url) => (requested.push(url), { status: 200, body: rss("") }),
+      feeds: [],
+      gdeltQueries: [cornell],
+      sources: { gdelt: false, courtDockets: false, caseNews: false },
+    });
+    expect(requested.some(isCaseQuery)).toBe(false);
+    await close();
   });
 });

@@ -125,6 +125,11 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                 Headline doesn&rsquo;t mention {headlineMissesCollege(c.title, c.collegeSlug, c.publisher)}. The article may only mention it in passing.
               </p>
             )}
+            {c.caseId && c.caseTitle && (
+              <p className="mt-1 text-sm font-medium">
+                Possible update to: <Link href={`/admin/cases/${c.caseId}`}>{c.caseTitle}</Link>
+              </p>
+            )}
             {c.snippet && <p className="mt-1 text-ink-muted">{c.snippet}</p>}
             {status !== "new" && (
               <p className="mt-2 text-sm text-ink-muted">
@@ -174,7 +179,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           name="scope"
                           label="Scope"
                           required
-                          defaultValue="institutional"
+                          defaultValue={c.caseId ? "case" : "institutional"}
                           options={[
                             { value: "institutional", label: "Institution-level" },
                             { value: "case", label: "About a specific case" },
@@ -184,6 +189,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                         <SelectField
                           name="caseId"
                           label="Case (if case-specific)"
+                          defaultValue={c.caseId}
                           placeholder="—"
                           options={cases.map((k) => ({ value: k.id, label: k.title }))}
                           hint="Choosing a case makes this case-specific coverage."

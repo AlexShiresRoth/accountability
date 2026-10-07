@@ -211,6 +211,15 @@ export const cases = pgTable("case", {
   locationContext: caseLocationContext("location_context").notNull().default("unspecified"),
   /** Editorial reason this case is in the public interest. Required before publication. */
   publicationJustification: text("publication_justification").notNull(),
+  // Monitoring (researcher-only, never public; changing these does not unpublish the case).
+  /** Distinctive terms for case-specific news searches, e.g. "Chi Phi". Searched with the case's school names. */
+  searchTerms: text("search_terms").array().notNull().default(sql`'{}'::text[]`),
+  /** When a researcher last checked the case for developments (court records, statements, news). */
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  /** Check again on this date, e.g. a scheduled hearing. Otherwise a case is due 30 days after its last check. */
+  nextCheckOn: date("next_check_on"),
+  /** Where to look and what is pending, e.g. "NYSCEF Index No. 161704/2026; motion to dismiss due 11/12". */
+  checkNotes: text("check_notes"),
   ...review(),
 }).enableRLS();
 
@@ -470,6 +479,8 @@ export const candidateItems = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     snippet: text("snippet"),
     collegeId: uuid("college_id").references(() => colleges.id, { onDelete: "set null" }),
+    /** Found by a case-specific search, or matched to one: a possible update to this case. */
+    caseId: uuid("case_id").references(() => cases.id, { onDelete: "set null" }),
     suggestedTopic: coverageTopic("suggested_topic"),
     status: candidateStatus("status").notNull().default("new"),
     acceptedSourceId: uuid("accepted_source_id").references(() => sources.id, { onDelete: "set null" }),

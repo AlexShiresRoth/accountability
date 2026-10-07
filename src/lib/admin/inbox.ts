@@ -54,10 +54,13 @@ export async function listCandidates(
       collegeId: s.candidateItems.collegeId,
       collegeName: s.colleges.name,
       collegeSlug: s.colleges.slug,
+      caseId: s.candidateItems.caseId,
+      caseTitle: s.cases.title,
       acceptedSourceId: s.candidateItems.acceptedSourceId,
     })
     .from(s.candidateItems)
     .leftJoin(s.colleges, eq(s.candidateItems.collegeId, s.colleges.id))
+    .leftJoin(s.cases, eq(s.candidateItems.caseId, s.cases.id))
     .where(where)
     .orderBy(sql`${s.candidateItems.publishedAt} desc nulls last`, desc(s.candidateItems.createdAt), asc(s.candidateItems.id))
     .limit(pageSize)
