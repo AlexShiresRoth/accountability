@@ -22,6 +22,10 @@ export const metadata: Metadata = {
   robots: isIndexable()
     ? { index: true, follow: true }
     : { index: false, follow: false },
+  // Google Search Console ownership check, if verifying by meta tag rather than DNS.
+  ...(process.env.GOOGLE_SITE_VERIFICATION && {
+    verification: { google: process.env.GOOGLE_SITE_VERIFICATION },
+  }),
 };
 
 export const viewport: Viewport = {

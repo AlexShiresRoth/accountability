@@ -17,8 +17,10 @@ export async function generateMetadata({ params }: PageProps<"/college/[slug]">)
   if (!profile) return {};
   const name = profile.college.name;
   return pageMetadata({
-    title: `${name}: sexual assault statistics, Title IX reporting and resources`,
-    description: `Clery Act statistics for rape, fondling, dating violence, domestic violence, and stalking at ${name}, with source footnotes, institutional response, and student reporting resources.`,
+    title: `${name}: Sexual Assault Reports & Title IX Response`,
+    absoluteTitle: true,
+    ownShareImage: true,
+    description: `Reported rape, fondling, dating violence and stalking at ${name}, from its Clery reports, with Title IX response and support resources. Every figure sourced.`,
     path: `/college/${profile.college.slug}`,
     noindex: profile.college.isDemo,
   });

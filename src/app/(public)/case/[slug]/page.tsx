@@ -16,6 +16,8 @@ export async function generateMetadata({ params }: PageProps<"/case/[slug]">): P
   if (!detail) return {};
   return pageMetadata({
     title: detail.case.title,
+    absoluteTitle: true,
+    ownShareImage: true,
     description: detail.case.summary,
     path: `/case/${detail.case.slug}`,
     type: "article",
