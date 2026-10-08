@@ -146,6 +146,9 @@ export const acceptCandidateSchema = z
     publicationDate: isoDate,
     /** The publisher's own URL. Required when the candidate was found via Google News. */
     articleUrl: webUrl,
+    /** The AI draft the summary started from, if any, and its model: recorded as internal provenance. */
+    summaryDraft: optional(600),
+    summaryModel: optional(100),
   })
   // Choosing a case means the coverage is about that case, whatever the scope field says.
   .transform((v) => ({ ...v, scope: v.caseId ? ("case" as const) : v.scope }))

@@ -305,6 +305,22 @@ describe("inbox", () => {
     expect((await db.select({ access: s.sources.access }).from(s.sources).where(eq(s.sources.id, sourceId)))[0].access).toBe("subscription");
   });
 
+  it("notes internally when the summary started as an AI draft, and whether it was edited", async () => {
+    const college = await f.college();
+    const summary = "Reports that the university's revised Title IX grievance procedures take effect this fall.";
+    const notesFor = async (o: Record<string, string>) => {
+      const c = await candidate(college.id);
+      const res = await acceptCandidate(db, c.id, input(college.id, { summary, ...o }), actor);
+      const { coverageId } = (res as { value: { coverageId: string } }).value;
+      return (await db.select({ n: s.collegeCoverage.internalNotes }).from(s.collegeCoverage).where(eq(s.collegeCoverage.id, coverageId)))[0].n;
+    };
+    expect(await notesFor({ summaryDraft: summary, summaryModel: "gpt-5-mini" })).toBe(
+      `Summary drafted by AI (gpt-5-mini) from the article text; accepted unedited by ${actor}.`,
+    );
+    expect(await notesFor({ summaryDraft: "Reports that new procedures were adopted by the university.", summaryModel: "gpt-5-mini" })).toContain(`edited by ${actor}`);
+    expect(await notesFor({})).toBeNull();
+  });
+
   it("cannot accept or dismiss a candidate twice", async () => {
     const college = await f.college();
     const c = await candidate(college.id);
