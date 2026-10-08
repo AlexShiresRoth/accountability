@@ -1,6 +1,7 @@
 import type { PublicCitation, PublicSource } from "@/lib/public";
 import { sourceTypes } from "@/lib/source-types";
 import { formatDate } from "@/lib/dates";
+import { sourceAccessLabels } from "@/lib/labels";
 import { Linkify } from "./linkify";
 
 // Citations sit inside running text (<p>, <li>, <dd>), so everything here must be phrasing content:
@@ -75,6 +76,11 @@ export function SourceDetails({ source }: { source: PublicSource }) {
           <a href={source.url} target="_blank" rel="noopener noreferrer">
             Open source
           </a>
+        )}
+        {sourceAccessLabels[source.access] && (
+          <span className="text-ink-muted" title={sourceAccessLabels[source.access]!.description}>
+            {sourceAccessLabels[source.access]!.title}
+          </span>
         )}
         {source.archivedUrl && (
           <a href={source.archivedUrl} target="_blank" rel="noopener noreferrer">

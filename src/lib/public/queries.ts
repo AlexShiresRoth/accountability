@@ -22,6 +22,7 @@ import type {
   ResponseTopic,
   SourceType,
   VerificationStatus,
+  SourceAccess,
 } from "@/lib/enums";
 import { citationKey, type CitationTargetKind } from "@/lib/citations";
 import { resolveStatistics, type ResolvedStatistic, type StatisticInput } from "@/lib/statistics";
@@ -41,6 +42,8 @@ export type PublicSource = {
   retrievedAt: string | null;
   archivedUrl: string | null;
   notes: string | null;
+  /** Whether readers can open it freely; "unknown" when not recorded. */
+  access: SourceAccess;
   isDemo: boolean;
   /** Admin preview only: the source isn't verified yet. */
   unverified: boolean;
@@ -193,6 +196,7 @@ const sourceColumns = {
   retrievedAt: s.sources.retrievedAt,
   archivedUrl: s.sources.archivedUrl,
   notes: s.sources.notes,
+  access: s.sources.access,
   isDemo: s.sources.isDemo,
   unverified: sql<boolean>`${s.sources.status} not in ('verified', 'needs_update')`,
 };

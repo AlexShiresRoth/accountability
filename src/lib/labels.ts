@@ -1,5 +1,6 @@
 // Human-readable labels for enum values. Public wording lives here so it stays consistent.
 import type {
+  SourceAccess,
   CleryGeography,
   ConfidentialityLevel,
   CoverageTopic,
@@ -107,4 +108,12 @@ export const policyTypeLabels: Record<PolicyType, string> = {
   amnesty: "Amnesty policy",
   supportive_measures: "Supportive measures",
   other: "Policy",
+};
+
+/** Public labels for a source's access. "unknown" shows nothing. */
+export const sourceAccessLabels: Record<SourceAccess, { title: string; description: string } | null> = {
+  free: { title: "Free to read", description: "Openly available without an account or subscription." },
+  subscription: { title: "Paywall", description: "The publisher may require a subscription to read the full text." },
+  registration: { title: "Free account required", description: "Free to read after registering with the publisher." },
+  unknown: null,
 };

@@ -127,6 +127,7 @@ export async function acceptCandidate(
       .insert(s.sources)
       .values({
         type: input.sourceType,
+        access: input.access,
         publisher: input.publisher,
         title: input.title,
         url,

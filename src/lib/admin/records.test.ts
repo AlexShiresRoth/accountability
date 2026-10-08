@@ -226,6 +226,22 @@ describe("source edits", () => {
     expect(await updateSource(db, id, { ...input, title: "T2" }, actor)).toMatchObject({ ok: true, unpublished: true });
     expect(await getStatus(db, "source", id)).toBe("pending_review");
   });
+
+  it("records access (free / paywall) without unpublishing, unless something else changed too", async () => {
+    const created = await createSource(db, sourceSchema.parse({ type: "reputable_journalism", publisher: "P", title: "A", url: "https://news.example/a" }), actor);
+    if (!created.ok) throw new Error("create failed");
+    const id = created.value;
+    await db.update(s.sources).set({ status: "verified" }).where(eq(s.sources.id, id));
+    const input = sourceSchema.parse({ type: "reputable_journalism", publisher: "P", title: "A", url: "https://news.example/a" });
+    expect(input.access).toBe("unknown");
+
+    expect(await updateSource(db, id, { ...input, access: "subscription" }, actor)).toEqual({ ok: true, value: undefined, unpublished: false });
+    expect(await getStatus(db, "source", id)).toBe("verified");
+    expect((await db.select({ access: s.sources.access }).from(s.sources).where(eq(s.sources.id, id)))[0].access).toBe("subscription");
+
+    expect(await updateSource(db, id, { ...input, access: "free", title: "A2" }, actor)).toMatchObject({ ok: true, unpublished: true });
+    expect(await getStatus(db, "source", id)).toBe("pending_review");
+  });
 });
 
 describe("deleteRecord", () => {
@@ -275,10 +291,18 @@ describe("inbox", () => {
     const { sourceId, coverageId } = (res as { value: { sourceId: string; coverageId: string } }).value;
 
     const [src] = await db.select().from(s.sources).where(eq(s.sources.id, sourceId));
-    expect(src).toMatchObject({ status: "draft", url: c.url, retrievedAt: "2026-09-30", createdBy: actor, type: "reputable_journalism" });
+    expect(src).toMatchObject({ status: "draft", url: c.url, retrievedAt: "2026-09-30", createdBy: actor, type: "reputable_journalism", access: "unknown" });
     const [cov] = await db.select().from(s.collegeCoverage).where(eq(s.collegeCoverage.id, coverageId));
     expect(cov).toMatchObject({ status: "draft", scope: "institutional", caseId: null });
     expect((await listCandidates(db, "accepted")).items.map((x) => x.id)).toContain(c.id);
+  });
+
+  it("records the article's access when accepting", async () => {
+    const college = await f.college();
+    const c = await candidate(college.id);
+    const res = await acceptCandidate(db, c.id, input(college.id, { access: "subscription" }), actor);
+    const { sourceId } = (res as { value: { sourceId: string } }).value;
+    expect((await db.select({ access: s.sources.access }).from(s.sources).where(eq(s.sources.id, sourceId)))[0].access).toBe("subscription");
   });
 
   it("cannot accept or dismiss a candidate twice", async () => {
