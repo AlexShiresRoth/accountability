@@ -7,6 +7,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/components/admin/action-form";
 import { db } from "@/db";
+import { draftCoverageSummary, extractArticleText, isFetchableArticleUrl, type SummaryDraft } from "@/lib/ai/summary";
+import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
+import { USER_AGENT } from "@/jobs/discovery/run";
+import * as s from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { acceptCandidate, dismissCandidate } from "@/lib/admin/inbox";
 import {
   addCitation,
@@ -256,6 +261,38 @@ export async function setFootnoteLinksAction(footnoteId: string, _prev: FormStat
 // ---------------------------------------------------------------------------
 // Inbox
 // ---------------------------------------------------------------------------
+
+/**
+ * Drafts a neutral summary for an inbox item, from the article at `articleUrl` (or the item's own link) or from
+ * text the researcher pasted. Returns the draft for the form; nothing is saved.
+ */
+export async function draftSummaryAction(
+  candidateId: string,
+  { articleUrl, pastedText }: { articleUrl?: string; pastedText?: string },
+): Promise<SummaryDraft> {
+  await requireResearcher();
+  const [candidate] = await db.select().from(s.candidateItems).where(eq(s.candidateItems.id, candidateId));
+  if (!candidate) return { ok: false, reason: "Inbox item not found." };
+
+  let text = (pastedText ?? "").trim();
+  if (!text) {
+    const url = articleUrl?.trim() || candidate.url;
+    if (isGoogleNewsUrl(url)) return { ok: false, reason: "Paste the publisher's article URL above first (Google News links can't be read)." };
+    if (!isFetchableArticleUrl(url)) return { ok: false, reason: "That link can't be fetched. Use the publisher's article URL." };
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
+        redirect: "follow",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return { ok: false, reason: `The publisher's site returned HTTP ${res.status}. Paste the article text instead.` };
+      text = extractArticleText(await res.text());
+    } catch {
+      return { ok: false, reason: "Couldn't reach the article. Paste the article text instead." };
+    }
+  }
+  return draftCoverageSummary({ title: candidate.title, publisher: candidate.publisher, text });
+}
 
 export async function dismissCandidateAction(id: string, _prev: FormState): Promise<FormState> {
   const { name } = await requireResearcher();

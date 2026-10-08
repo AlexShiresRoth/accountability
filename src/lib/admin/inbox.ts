@@ -6,6 +6,7 @@ import * as s from "@/db/schema";
 import type { Database } from "@/db/types";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
 import { candidateStatuses, type CandidateStatus } from "@/lib/enums";
+import { summaryProvenance } from "@/lib/ai/summary";
 import type { MutationResult } from "./records";
 import type { AcceptCandidateInput } from "./validation";
 
@@ -151,6 +152,7 @@ export async function acceptCandidate(
                 caseId: input.scope === "case" ? input.caseId : null,
                 topic: input.topic,
                 summary: input.summary,
+                internalNotes: summaryProvenance({ draft: input.summaryDraft, final: input.summary, model: input.summaryModel, actor }),
                 status: "draft",
                 createdBy: actor,
               })

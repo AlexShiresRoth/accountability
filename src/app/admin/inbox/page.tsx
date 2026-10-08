@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/admin/action-form";
 import { SelectField, TextArea, TextField } from "@/components/admin/fields";
 import { accessOptions } from "@/components/admin/source-fields";
+import { SummaryDrafter } from "@/components/admin/summary-drafter";
 import { db } from "@/db";
 import { candidateCounts, candidateCountsByCollege, listCandidates, type CollegeFilter } from "@/lib/admin/inbox";
 import { Pagination } from "@/components/admin/pagination";
@@ -229,6 +230,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                         rows={2}
                         hint="One sentence in your words, attributed where needed: e.g. “Reports that the district attorney reopened an investigation.” Do not name victims."
                       />
+                      <SummaryDrafter candidateId={c.id} />
                     </ActionForm>
                   </div>
                 </details>
