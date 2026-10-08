@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicSourceIndex } from "@/lib/public";
 import { SourceDetails } from "./cite";
-import { NOT_YET_CITED, PAGE_SIZE, SourceIndex, filterSources, filtersToQuery, readFilters } from "./source-index";
+import { NOT_YET_CITED, PAGE_SIZE, SourceIndex, filterSources, filtersToQuery, readFilters, type SourceFilters } from "./source-index";
 
 type Indexed = PublicSourceIndex["sources"][number];
 const source = (id: string, o: Partial<Indexed> = {}): Indexed => ({
@@ -32,7 +32,7 @@ const sources = [
   source("bruin", { type: "reputable_journalism", title: "Title IX office expands", publisher: "Daily Bruin", colleges: ["ucla"] }),
   source("both", { type: "federal_government", title: "Campus Safety and Security data", publisher: "U.S. Department of Education", colleges: [] }),
 ];
-const ids = (filters: { q?: string; college?: string }) => filterSources(sources, { q: "", college: "", ...filters }).map((s) => s.id);
+const ids = (filters: Partial<SourceFilters>) => filterSources(sources, { q: "", college: "", type: "", ...filters }).map((s) => s.id);
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 describe("source index filters", () => {
@@ -58,6 +58,12 @@ describe("source index filters", () => {
     expect(ids({ college: NOT_YET_CITED })).toEqual(["both"]);
   });
 
+  it("filters by source type, alongside the other filters", () => {
+    expect(ids({ type: "court_record" })).toEqual(["docket"]);
+    expect(ids({ type: "university", college: "cornell-university" })).toEqual(["asr"]);
+    expect(ids({ type: "university", college: "ucla" })).toEqual([]);
+  });
+
   it("combines the search with the university filter", () => {
     expect(ids({ q: "cornell", college: "cornell-university" })).toEqual(["asr", "docket"]);
     expect(ids({ q: "cornell", college: "ucla" })).toEqual([]);
@@ -66,22 +72,24 @@ describe("source index filters", () => {
 
 describe("source index URL", () => {
   it("reads filters from the query string", () => {
-    expect(readFilters("?college=ucla&q=title%20ix", colleges)).toEqual({ q: "title ix", college: "ucla" });
-    expect(readFilters("", colleges)).toEqual({ q: "", college: "" });
+    expect(readFilters("?college=ucla&q=title%20ix", colleges)).toEqual({ q: "title ix", college: "ucla", type: "" });
+    expect(readFilters("?type=reputable_journalism", colleges)).toEqual({ q: "", college: "", type: "reputable_journalism" });
+    expect(readFilters("", colleges)).toEqual({ q: "", college: "", type: "" });
   });
 
   it("accepts the not-yet-cited bucket", () => {
-    expect(readFilters(`?college=${NOT_YET_CITED}`, colleges)).toEqual({ q: "", college: NOT_YET_CITED });
+    expect(readFilters(`?college=${NOT_YET_CITED}`, colleges)).toEqual({ q: "", college: NOT_YET_CITED, type: "" });
   });
 
-  it("ignores a university that isn't in the index instead of showing nothing", () => {
-    expect(readFilters("?college=not-a-school&q=x", colleges)).toEqual({ q: "x", college: "" });
+  it("ignores a university or type that isn't known instead of showing nothing", () => {
+    expect(readFilters("?college=not-a-school&q=x", colleges)).toEqual({ q: "x", college: "", type: "" });
+    expect(readFilters("?type=blog", colleges)).toEqual({ q: "", college: "", type: "" });
   });
 
   it("writes only the filters in use, and round-trips", () => {
-    expect(filtersToQuery({ q: "", college: "" })).toBe("");
-    expect(filtersToQuery({ q: "", college: "ucla" })).toBe("?college=ucla");
-    const filters = { q: "annual & security", college: "cornell-university" };
+    expect(filtersToQuery({ q: "", college: "", type: "" })).toBe("");
+    expect(filtersToQuery({ q: "", college: "ucla", type: "" })).toBe("?college=ucla");
+    const filters: SourceFilters = { q: "annual & security", college: "cornell-university", type: "university" };
     expect(readFilters(filtersToQuery(filters), colleges)).toEqual(filters);
   });
 });
@@ -97,6 +105,13 @@ describe("SourceIndex rendering", () => {
     expect(text(html)).toContain("Cited for Cornell University");
     expect(text(html)).toContain(`Showing 4 of 4 sources.`);
     expect(text(html)).not.toContain("Clear filters");
+  });
+
+  it("has an All tab plus one tab per source type the index contains, with counts", () => {
+    const html = renderToStaticMarkup(<SourceIndex index={{ sources, colleges }} />);
+    const tabs = [...html.matchAll(/role="tab"[^>]*>(.*?)<\/button>/g)].map((m) => text(m[1]));
+    expect(tabs).toEqual(["All 4", "Federal government 1", "University 1", "Court record 1", "Journalism 1"]);
+    expect(html).toMatch(/aria-selected="true"[^>]*>All/);
   });
 
   it("omits the not-yet-cited option when every source is cited", () => {
