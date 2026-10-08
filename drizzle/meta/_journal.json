@@ -36,6 +36,13 @@
       "when": 1791340057502,
       "tag": "0004_add_case_monitoring",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791472388381,
+      "tag": "0005_add_source_access",
+      "breakpoints": true
     }
   ]
 }

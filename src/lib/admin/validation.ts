@@ -15,6 +15,7 @@ import {
   responseTopics,
   sourceTypes,
   verificationStatuses,
+  sourceAccessLevels,
 } from "@/lib/enums";
 
 export function formValues(form: FormData): Record<string, string> {
@@ -65,6 +66,7 @@ export const sourceSchema = z
     archivedUrl: webUrl,
     documentPath: optional(500),
     notes: optional(),
+    access: z.enum(sourceAccessLevels).default("unknown"),
   })
   .refine((v) => v.url || v.archivedUrl || v.documentPath, { message: "Give a URL, an archived URL, or a stored document path.", path: ["url"] });
 export type SourceInput = z.infer<typeof sourceSchema>;
@@ -138,6 +140,7 @@ export const acceptCandidateSchema = z
       .transform((v) => v?.trim() ?? "")
       .pipe(z.string().max(600)),
     sourceType: z.enum(sourceTypes),
+    access: z.enum(sourceAccessLevels).default("unknown"),
     publisher: required("Publisher"),
     title: required("Title", 1000),
     publicationDate: isoDate,

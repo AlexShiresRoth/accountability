@@ -1,0 +1,2 @@
+CREATE TYPE "public"."source_access" AS ENUM('free', 'subscription', 'registration', 'unknown');--> statement-breakpoint
+ALTER TABLE "source" ADD COLUMN "access" "source_access" DEFAULT 'unknown' NOT NULL;

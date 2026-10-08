@@ -116,5 +116,9 @@ export const coverageTopics = [
 ] as const;
 export type CoverageTopic = (typeof coverageTopics)[number];
 
+/** Whether a reader can open a source: free, behind a paywall, free with an account, or not yet recorded. */
+export const sourceAccessLevels = ["free", "subscription", "registration", "unknown"] as const;
+export type SourceAccess = (typeof sourceAccessLevels)[number];
+
 export const candidateStatuses = ["new", "accepted", "dismissed"] as const;
 export type CandidateStatus = (typeof candidateStatuses)[number];

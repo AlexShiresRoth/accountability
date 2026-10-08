@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicSourceIndex } from "@/lib/public";
+import { SourceDetails } from "./cite";
 import { NOT_YET_CITED, PAGE_SIZE, SourceIndex, filterSources, filtersToQuery, readFilters } from "./source-index";
 
 type Indexed = PublicSourceIndex["sources"][number];
@@ -14,6 +15,7 @@ const source = (id: string, o: Partial<Indexed> = {}): Indexed => ({
   retrievedAt: null,
   archivedUrl: null,
   notes: null,
+  access: "unknown",
   isDemo: false,
   unverified: false,
   colleges: [],
@@ -120,5 +122,20 @@ describe("SourceIndex rendering", () => {
   it("says so when nothing has been published", () => {
     const html = text(renderToStaticMarkup(<SourceIndex index={{ sources: [], colleges: [] }} />));
     expect(html).toBe("No verified sources have been published yet.");
+  });
+});
+
+describe("source access label", () => {
+  const html = (access: Indexed["access"]) => text(renderToStaticMarkup(<SourceDetails source={source("x", { url: "https://news.example/x", access })} />));
+
+  it("tells readers whether a source is free or behind a paywall", () => {
+    expect(html("free")).toContain("Free to read");
+    expect(html("subscription")).toContain("Paywall");
+    expect(html("registration")).toContain("Free account required");
+  });
+
+  it("says nothing when access hasn't been recorded", () => {
+    const out = html("unknown");
+    for (const label of ["Free to read", "Paywall", "Free account required"]) expect(out).not.toContain(label);
   });
 });

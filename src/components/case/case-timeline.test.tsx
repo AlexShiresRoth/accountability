@@ -39,6 +39,7 @@ const citation: PublicCitation = {
     retrievedAt: null,
     archivedUrl: null,
     notes: null,
+    access: "free",
     isDemo: false,
     unverified: false,
   },

@@ -38,7 +38,8 @@ export type ResearchBundle = {
     citations?: BundleCitation[];
   };
   /** Keyed by a local name used in citations and reports. */
-  sources: Record<string, SourceInput & { internalNotes?: string }>;
+  /** `access` may be left out (recorded as "unknown"). */
+  sources: Record<string, Omit<SourceInput, "access"> & { access?: SourceInput["access"]; internalNotes?: string }>;
   reports: {
     reportYear: number;
     title: string;
@@ -172,7 +173,7 @@ export async function importResearchBundle(db: Database, bundle: ResearchBundle,
       log.push(`Source "${input.title}": already exists, reused.`);
       continue;
     }
-    const created = await createSource(db, input, actor);
+    const created = await createSource(db, { ...input, access: input.access ?? "unknown" }, actor);
     if (!created.ok) throw new Error(created.problems.join(" "));
     if (internalNotes) await db.update(s.sources).set({ internalNotes }).where(eq(s.sources.id, created.value));
     sourceIds[key] = created.value;

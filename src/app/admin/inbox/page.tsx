@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/admin/action-form";
 import { SelectField, TextArea, TextField } from "@/components/admin/fields";
+import { accessOptions } from "@/components/admin/source-fields";
 import { db } from "@/db";
 import { candidateCounts, candidateCountsByCollege, listCandidates, type CollegeFilter } from "@/lib/admin/inbox";
 import { Pagination } from "@/components/admin/pagination";
@@ -202,6 +203,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                           options={Object.entries(sourceTypes).map(([value, t]) => ({ value, label: t.label }))}
                         />
                         <TextField name="publisher" label="Publisher" required defaultValue={c.publisher} />
+                        <SelectField name="access" label="Access" defaultValue="unknown" options={accessOptions} hint="Is the article free to read, or behind a paywall?" />
                         <TextField
                           name="publicationDate"
                           label="Publication date"

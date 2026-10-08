@@ -60,6 +60,10 @@ export async function updateSource(db: Database, id: string, input: SourceInput,
   if (!before) return fail("Source not found.");
   if (!changed(before, input)) return unchanged();
   await db.update(s.sources).set(input).where(eq(s.sources.id, id));
+  // Access (free / paywall) is reader guidance, not a claim the source supports: changing only that keeps the
+  // source published. Any other change sends a published source back for re-verification.
+  const { access: _access, ...rest } = input;
+  if (!changed(before, rest)) return ok(undefined);
   return ok(undefined, await markEdited(db, "source", id, actor));
 }
 

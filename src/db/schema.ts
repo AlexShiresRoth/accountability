@@ -37,6 +37,7 @@ export const confidentialityLevel = pgEnum("confidentiality_level", e.confidenti
 export const coverageScope = pgEnum("coverage_scope", e.coverageScopes);
 export const coverageTopic = pgEnum("coverage_topic", e.coverageTopics);
 export const candidateStatus = pgEnum("candidate_status", e.candidateStatuses);
+export const sourceAccess = pgEnum("source_access", e.sourceAccessLevels);
 
 // ---------------------------------------------------------------------------
 // Shared columns
@@ -102,6 +103,8 @@ export const sources = pgTable(
     documentPath: text("document_path"),
     /** Public notes about the source (e.g. "Pages 41–44 contain the crime statistics"). */
     notes: text("notes"),
+    /** Whether readers can open it freely. Shown publicly when known; changing it does not unpublish a source. */
+    access: sourceAccess("access").notNull().default("unknown"),
     ...review(),
   },
   (t) => [
