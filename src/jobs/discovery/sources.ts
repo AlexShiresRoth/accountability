@@ -18,6 +18,8 @@ export type CollegeQuery = {
   names: string[];
   /** How headlines usually refer to the institution; used to re-file stories about another tracked school. */
   shortName: string;
+  /** Other ways headlines name the institution, matched like `shortName`. */
+  headlineNames?: string[];
   /**
    * Keep search results only when the headline names the institution. For names that full-text search
    * matches too loosely (boilerplate mentions, or ambiguous names like "Columbia").
@@ -44,6 +46,9 @@ export const feeds: FeedSource[] = [
   },
   // dailybruin.com/feed/ redirects; the WordPress host serves the feed directly.
   { url: "https://wp.dailybruin.com/feed/", publisher: "Daily Bruin", collegeSlug: "ucla" },
+  // Answers 403 to browser user agents but 200 to the discovery bot's (2026-10-12). security.uchicago.edu/feed/ is
+  // the information security office (phishing notices, some titled after harassment complaints), not campus safety.
+  { url: "https://chicagomaroon.com/feed/", publisher: "The Chicago Maroon", collegeSlug: "university-of-chicago" },
 ];
 
 /** Exact-name queries, used for both GDELT and Google News search. */
@@ -100,4 +105,21 @@ export const gdeltQueries: CollegeQuery[] = [
     // Not "Regents of the University of California": that names every UC campus.
     courtNames: ["University of California, Los Angeles", "UCLA"],
   },
+  {
+    collegeSlug: "university-of-chicago",
+    names: ["University of Chicago", "UChicago"],
+    shortName: "University of Chicago",
+    headlineNames: ["UChicago", "U of C"],
+    // Chicago crime coverage often quotes the UChicago Crime Lab or Urban Labs, so a passing mention plus a term
+    // like "domestic violence" matches easily. Not "Chicago": headlines naming the city would be re-filed here.
+    headlineMustName: true,
+    // Sued as "The University of Chicago"; its hospital as "University of Chicago Medical Center".
+    courtNames: ["University of Chicago"],
+  },
 ];
+
+/** Matches a headline that names the institution. */
+export function headlinePattern(q: Pick<CollegeQuery, "shortName" | "headlineNames">): RegExp {
+  const names = [q.shortName, ...(q.headlineNames ?? [])].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(${names.join("|")})\\b`, "i");
+}

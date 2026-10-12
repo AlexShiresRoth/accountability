@@ -72,6 +72,8 @@ Deferred until the inbox exists, since candidates are only useful once researche
       `DISCOVERY_GDELT=on`; a GDELT failure stops GDELT for the rest of the run; network errors log their cause.
 - [ ] Revisit GDELT occasionally (`pnpm discover` still uses it by default); re-enable on the cron if it recovers.
 - [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/discovery`.
+- [x] Manual run from the admin dashboard ("Run discovery now"): one school or all, lookback 2, 30 or 90 days; recorded
+      as `admin` with its scope and who ran it; refused while another run is in progress (CourtListener's rate limit).
 
 ### 8. README
 Setup, architecture, editorial principles, and how verified data is added.
@@ -125,6 +127,16 @@ page's work-in-progress note links to it and lists the universities still in pre
       file's header; figures are as printed.
 - [x] Imported the five into production as `pending_review` (2026-10-05).
 - [ ] Verify the five in the production admin, then their college records.
+- [x] University of Chicago, added after an alleged sexual assault at the AEPi fraternity house on 2026-10-11:
+      2026–2027 and 2025–2026 ASRs (Hyde Park table; all 84 overlapping cells match the federal data) in
+      `research/university-of-chicago.ts`; institutional record (7 responses, 4 policies, 17 resources, 1 timeline
+      entry) in `research/university-of-chicago-institutional.ts`; case draft in `research/uchicago-aepi.ts`.
+      Discovery: Chicago Maroon feed; search results must name the university in the headline (Crime Lab noise).
+- [ ] Import the three UChicago bundles (dev, then production) and verify. Decide whether the AEPi case meets the
+      bar for a case record yet (no proceeding so far); set its monitoring terms ("Alpha Epsilon Pi", "AEPi").
+- [ ] UChicago: settle the contact-detail conflicts listed in the institutional file's header; archive the 2026 ASR
+      on the Wayback Machine (the Internet Archive was rate-limiting on 2026-10-12); locate the university's AEPi
+      community alert and any CPD statement.
 - [ ] Bennington College reported 53 rapes in 2024 (927 students; 1 in each of the two prior years): research what
       explains it before considering a profile.
 - [ ] CourtListener: anonymous search allows ~5 requests/minute, so docket searches are spaced 15 s apart. Add an

@@ -19,6 +19,9 @@ import { uclaInstitutional } from "../research/ucla-institutional";
 import { uclaAsr } from "../research/ucla";
 import { pennStateInstitutional } from "../research/penn-state-university-institutional";
 import { pennStateAsr } from "../research/penn-state-university";
+import { uchicagoAepi } from "../research/uchicago-aepi";
+import { uchicagoAsr } from "../research/university-of-chicago";
+import { uchicagoInstitutional } from "../research/university-of-chicago-institutional";
 import { createPgClient } from "../src/db/client";
 import * as s from "../src/db/schema";
 import { resolveDatabaseUrl } from "../src/db/target";
@@ -43,6 +46,9 @@ const bundles: Record<string, ResearchBundle> = {
   "ucla-institutional": uclaInstitutional,
   "penn-state-university": pennStateAsr,
   "penn-state-university-institutional": pennStateInstitutional,
+  "university-of-chicago": uchicagoAsr,
+  "university-of-chicago-institutional": uchicagoInstitutional,
+  "uchicago-aepi": uchicagoAepi,
 };
 const ACTOR = "Claude (transcription)";
 

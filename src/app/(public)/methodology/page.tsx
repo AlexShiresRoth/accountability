@@ -153,7 +153,9 @@ export default function MethodologyPage() {
           <p>
             We began with Cornell, Harvard and Columbia. We are now adding the universities that reported the largest
             numbers of rapes, across all Clery locations, in the U.S. Department of Education&rsquo;s most recent{" "}
-            <a href={CAMPUS_SAFETY_DATA}>Campus Safety and Security data</a> (calendar year 2024).
+            <a href={CAMPUS_SAFETY_DATA}>Campus Safety and Security data</a> (calendar year 2024). We also add a
+            university when a reported incident there, or the university&rsquo;s handling of one, becomes the subject
+            of public reporting or legal proceedings.
           </p>
           <p>
             That order is not a ranking, and it does not mean these universities are less safe than others. Raw counts

@@ -14,6 +14,7 @@ import { isRelevant, suggestTopic } from "./relevance";
 import {
   feeds as defaultFeeds,
   gdeltQueries as defaultQueries,
+  headlinePattern,
   type CollegeQuery,
   type FeedSource,
 } from "./sources";
@@ -44,8 +45,10 @@ export type DiscoveryOptions = {
   caseQueries?: CaseQuery[];
   /** "Today", for the court-docket lookback window (injectable for tests). */
   now?: Date;
-  /** Recorded on the run: "cron", "cli" or "test". */
+  /** Recorded on the run: "cron", "cli", "admin" or "test". */
   triggeredBy?: string;
+  /** What a manual run covered, e.g. "University of Chicago, last 90 days (Alex)". Recorded in the run summary. */
+  scope?: string;
   /** Structured progress logging. Silent by default. */
   log?: Logger;
 };
@@ -72,6 +75,8 @@ export type RunSummary = {
   /** Inbox items marked as a possible update to a case (new from case searches, or matched to existing ones). */
   caseUpdates?: number;
   errors: string[];
+  /** Set for manual runs; see DiscoveryOptions.scope. */
+  scope?: string;
 };
 
 export type DiscoveryResult = {
@@ -115,6 +120,10 @@ export const defaultFetchText: FetchText = async (url) => {
   return { status: res.status, body: await res.text() };
 };
 
+// GDELT has refused connections from Vercel and rate-limited every request elsewhere since late September 2026,
+// so server-side runs (cron and admin) skip it unless DISCOVERY_GDELT=on. Google News covers the same outlets.
+export const serverGdeltEnabled = () => process.env.DISCOVERY_GDELT === "on";
+
 const GDELT_INTERVAL_MS = 6_000;
 const GOOGLE_NEWS_INTERVAL_MS = 2_000;
 // CourtListener's anonymous API allows about five searches a minute: on 2026-10-05 the sixth search was refused
@@ -148,6 +157,7 @@ export async function runDiscovery(
       droppedNoHeadlineName: r.droppedNoHeadlineName,
       caseUpdates: r.caseUpdates,
       errors: r.errors,
+      ...(opts.scope && { scope: opts.scope }),
     };
     await db
       .update(s.ingestionRuns)
@@ -427,7 +437,7 @@ async function discover(
   const headlineSchools = gdeltQueries
     .map((q) => ({
       id: collegeIdBySlug.get(q.collegeSlug),
-      re: new RegExp(`\\b${escapeRegExp(q.shortName)}\\b`, "i"),
+      re: headlinePattern(q),
     }))
     .filter((x): x is { id: string; re: RegExp } => Boolean(x.id));
   for (const c of candidates) {
@@ -449,7 +459,7 @@ async function discover(
       .filter((q) => q.headlineMustName && collegeIdBySlug.has(q.collegeSlug))
       .map((q) => [
         collegeIdBySlug.get(q.collegeSlug)!,
-        new RegExp(`\\b${escapeRegExp(q.shortName)}\\b`, "i"),
+        headlinePattern(q),
       ]),
   );
   for (let i = candidates.length - 1; i >= 0; i--) {
@@ -613,7 +623,6 @@ function addCount(
   entry.relevant += n;
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
  * Error text for logs and the run record. Node's fetch reports every network failure as "fetch failed" and puts
  * the reason (e.g. UND_ERR_CONNECT_TIMEOUT, ECONNRESET, ENOTFOUND) in `cause`, so include it.

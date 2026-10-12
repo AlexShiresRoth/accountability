@@ -32,6 +32,15 @@ export const roadmap: RoadmapItem[] = [
     link: { href: "/methodology#coverage", label: "How universities are chosen" },
   },
   {
+    id: "university-of-chicago",
+    title: "University of Chicago profile",
+    summary:
+      "Statistics from the University of Chicago's Annual Security Reports, with its policies and reporting and support resources, each checked against the original before publication.",
+    status: "in_progress",
+    updated: "2026-10",
+    link: { href: "/methodology#coverage", label: "How universities are chosen" },
+  },
+  {
     id: "lessons-review",
     title: "Editorial review of the prevention lessons",
     summary:

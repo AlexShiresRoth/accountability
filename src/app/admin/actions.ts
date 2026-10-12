@@ -12,6 +12,7 @@ import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
 import { USER_AGENT } from "@/jobs/discovery/run";
 import * as s from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { runManualDiscovery } from "@/lib/admin/discovery";
 import { acceptCandidate, dismissCandidate } from "@/lib/admin/inbox";
 import {
   addCitation,
@@ -383,6 +384,23 @@ export async function updateCaseMonitoringAction(caseId: string, _prev: FormStat
   if (!result.ok) return { problems: result.problems };
   revalidatePath(`/admin/cases/${caseId}`);
   return { ok: true, message: result.unchanged ? "No changes to save." : "Monitoring saved." };
+}
+
+/** Runs discovery now for one school (or all) and reports what reached the inbox. */
+export async function runDiscoveryAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const { name } = await requireResearcher();
+  const run = await runManualDiscovery(db, {
+    collegeSlug: String(form.get("college") ?? ""),
+    days: Number(form.get("days")),
+    actor: name,
+  });
+  if (!run.ok) return { problems: run.problems };
+  const { result, label } = run;
+  revalidatePath("/admin");
+  revalidatePath("/admin/inbox");
+  const summary = `${label}: ${result.created} new in the inbox (${result.found} found) in ${Math.round(result.durationMs / 1000)} s.`;
+  const failures = result.errors.length ? ` ${result.errors.length} source(s) failed; see Discovery runs.` : "";
+  return { ok: true, message: summary + failures };
 }
 
 export async function markCaseCheckedAction(caseId: string): Promise<FormState> {
