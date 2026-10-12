@@ -1,19 +1,44 @@
 import Link from "next/link";
+import { ActionForm } from "@/components/admin/action-form";
 import { DiscoveryRuns } from "@/components/admin/discovery-runs";
+import { SelectField } from "@/components/admin/fields";
 import { StatusBadge, statusLabels } from "@/components/admin/status";
 import { db } from "@/db";
+import * as s from "@/db/schema";
+import { gdeltQueries } from "@/jobs/discovery/sources";
+import { ALL_SCHOOLS, lookbackDays } from "@/lib/admin/discovery";
 import { casesDueForCheck } from "@/lib/admin/monitoring";
 import { dashboard, recentDiscoveryRuns } from "@/lib/admin/queries";
 import { formatDate } from "@/lib/dates";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { reviewTables, type ReviewTableKey } from "@/lib/admin/workflow";
 import { verificationStatuses } from "@/lib/enums";
+import { runDiscoveryAction } from "./actions";
 
 export const metadata = { title: "Dashboard" };
 
+// Server actions on this page include a manual discovery run (all schools: a few minutes of spaced court searches).
+export const maxDuration = 300;
+
+const lookbackLabels: Record<(typeof lookbackDays)[number], string> = {
+  2: "Last 2 days (same as the daily run)",
+  30: "Last 30 days",
+  90: "Last 90 days (backfill)",
+};
+
 export default async function AdminDashboard() {
   await requireResearcherPage();
-  const [{ counts, inbox, recent, awaiting }, runs, dueCases] = await Promise.all([dashboard(db), recentDiscoveryRuns(db), casesDueForCheck(db)]);
+  const [{ counts, inbox, recent, awaiting }, runs, dueCases, colleges] = await Promise.all([
+    dashboard(db),
+    recentDiscoveryRuns(db),
+    casesDueForCheck(db),
+    db.select({ slug: s.colleges.slug, name: s.colleges.name }).from(s.colleges).orderBy(s.colleges.name),
+  ]);
+  const covered = new Set(gdeltQueries.map((q) => q.collegeSlug));
+  const schoolOptions = [
+    ...colleges.filter((c) => covered.has(c.slug)).map((c) => ({ value: c.slug, label: c.name })),
+    { value: ALL_SCHOOLS, label: "All schools" },
+  ];
 
   return (
     <div className="space-y-10">
@@ -75,6 +100,28 @@ export default async function AdminDashboard() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-labelledby="run-discovery">
+        <h2 id="run-discovery" className="text-xl">
+          Run discovery now
+        </h2>
+        <p className="mt-1 max-w-[70ch] text-sm text-ink-muted">
+          Searches news, the school&rsquo;s campus feeds, federal court dockets and its cases&rsquo; monitoring terms, as
+          the daily run does. Results go to the inbox; nothing is published. A longer lookback suits a newly added school.
+        </p>
+        <ActionForm action={runDiscoveryAction} submitLabel="Run discovery" className="mt-3 max-w-xl space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField name="college" label="School" required options={schoolOptions} />
+            <SelectField
+              name="days"
+              label="Lookback"
+              required
+              defaultValue="2"
+              options={lookbackDays.map((d) => ({ value: String(d), label: lookbackLabels[d] }))}
+            />
+          </div>
+        </ActionForm>
       </section>
 
       <DiscoveryRuns data={runs} />

@@ -45,8 +45,10 @@ export type DiscoveryOptions = {
   caseQueries?: CaseQuery[];
   /** "Today", for the court-docket lookback window (injectable for tests). */
   now?: Date;
-  /** Recorded on the run: "cron", "cli" or "test". */
+  /** Recorded on the run: "cron", "cli", "admin" or "test". */
   triggeredBy?: string;
+  /** What a manual run covered, e.g. "University of Chicago, last 90 days (Alex)". Recorded in the run summary. */
+  scope?: string;
   /** Structured progress logging. Silent by default. */
   log?: Logger;
 };
@@ -73,6 +75,8 @@ export type RunSummary = {
   /** Inbox items marked as a possible update to a case (new from case searches, or matched to existing ones). */
   caseUpdates?: number;
   errors: string[];
+  /** Set for manual runs; see DiscoveryOptions.scope. */
+  scope?: string;
 };
 
 export type DiscoveryResult = {
@@ -116,6 +120,10 @@ export const defaultFetchText: FetchText = async (url) => {
   return { status: res.status, body: await res.text() };
 };
 
+// GDELT has refused connections from Vercel and rate-limited every request elsewhere since late September 2026,
+// so server-side runs (cron and admin) skip it unless DISCOVERY_GDELT=on. Google News covers the same outlets.
+export const serverGdeltEnabled = () => process.env.DISCOVERY_GDELT === "on";
+
 const GDELT_INTERVAL_MS = 6_000;
 const GOOGLE_NEWS_INTERVAL_MS = 2_000;
 // CourtListener's anonymous API allows about five searches a minute: on 2026-10-05 the sixth search was refused
@@ -149,6 +157,7 @@ export async function runDiscovery(
       droppedNoHeadlineName: r.droppedNoHeadlineName,
       caseUpdates: r.caseUpdates,
       errors: r.errors,
+      ...(opts.scope && { scope: opts.scope }),
     };
     await db
       .update(s.ingestionRuns)

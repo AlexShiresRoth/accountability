@@ -72,6 +72,8 @@ Deferred until the inbox exists, since candidates are only useful once researche
       `DISCOVERY_GDELT=on`; a GDELT failure stops GDELT for the rest of the run; network errors log their cause.
 - [ ] Revisit GDELT occasionally (`pnpm discover` still uses it by default); re-enable on the cron if it recovers.
 - [ ] Manual trigger for verification: `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/discovery`.
+- [x] Manual run from the admin dashboard ("Run discovery now"): one school or all, lookback 2, 30 or 90 days; recorded
+      as `admin` with its scope and who ran it; refused while another run is in progress (CourtListener's rate limit).
 
 ### 8. README
 Setup, architecture, editorial principles, and how verified data is added.

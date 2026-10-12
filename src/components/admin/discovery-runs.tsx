@@ -65,7 +65,10 @@ export function DiscoveryRuns({ data }: { data: Data }) {
                 <details>
                   <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="tabular">{when(run.startedAt)}</span>
-                    <span className="text-ink-muted">{run.triggeredBy}</span>
+                    <span className="text-ink-muted">
+                      {run.triggeredBy}
+                      {summary?.scope && ` · ${summary.scope}`}
+                    </span>
                     <span className={`inline-block border px-1.5 py-px text-xs font-semibold whitespace-nowrap ${outcomeStyles[outcome] ?? outcomeStyles.running}`}>
                       {outcomeLabels[outcome] ?? outcome}
                     </span>
