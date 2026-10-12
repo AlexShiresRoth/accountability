@@ -13,7 +13,7 @@ import { coverageTopicLabels } from "@/lib/labels";
 import { sourceTypes } from "@/lib/source-types";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
 import { isCourtListenerUrl } from "@/jobs/discovery/courtlistener";
-import { feeds, gdeltQueries } from "@/jobs/discovery/sources";
+import { feeds, gdeltQueries, headlinePattern } from "@/jobs/discovery/sources";
 import { acceptCandidateAction, dismissCandidateAction } from "../actions";
 
 export const metadata = { title: "Inbox" };
@@ -25,10 +25,10 @@ const tabLabels: Record<CandidateStatus, string> = { new: "New", accepted: "Acce
  * Campus-feed items are skipped: a campus paper rarely names its own school in a headline.
  */
 function headlineMissesCollege(title: string | null, slug: string | null, publisher: string | null): string | null {
-  const shortName = gdeltQueries.find((q) => q.collegeSlug === slug)?.shortName;
-  if (!title || !shortName) return null;
+  const query = gdeltQueries.find((q) => q.collegeSlug === slug);
+  if (!title || !query) return null;
   if (feeds.some((f) => f.collegeSlug === slug && f.publisher === publisher)) return null;
-  return new RegExp(`\\b${shortName}\\b`, "i").test(title) ? null : shortName;
+  return headlinePattern(query).test(title) ? null : query.shortName;
 }
 
 export default async function InboxPage({ searchParams }: PageProps<"/admin/inbox">) {

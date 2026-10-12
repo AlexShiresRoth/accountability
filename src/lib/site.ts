@@ -19,5 +19,6 @@ export const site = {
     { slug: "ohio-state-university", name: "The Ohio State University" },
     { slug: "penn-state-university", name: "Penn State University" },
     { slug: "ucla", name: "University of California, Los Angeles" },
+    { slug: "university-of-chicago", name: "University of Chicago" },
   ],
 } as const;

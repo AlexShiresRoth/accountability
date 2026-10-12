@@ -1,6 +1,9 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cornellChiPhi } from "../../../research/cornell-chi-phi";
+import { uchicagoAepi } from "../../../research/uchicago-aepi";
+import { uchicagoAsr } from "../../../research/university-of-chicago";
+import { uchicagoInstitutional } from "../../../research/university-of-chicago-institutional";
 import { cornellInstitutional } from "../../../research/cornell-institutional";
 import { cornellAsr } from "../../../research/cornell-university";
 import * as s from "@/db/schema";
@@ -181,5 +184,42 @@ describe("Chi Phi case bundle", () => {
 
     const again = await importResearchBundle(db, cornellChiPhi, actor);
     expect(again.log).toContain("Case \"cornell-2024-chi-phi\": already exists, skipped (edit it in the admin).");
+  });
+});
+
+describe("UChicago ASR and institutional bundles", () => {
+  it("validate, and every institutional record carries at least one citation", () => {
+    expect(validateBundle(uchicagoAsr)).toEqual([]);
+    expect(validateBundle(uchicagoInstitutional)).toEqual([]);
+    expect(uchicagoInstitutional.records!.every((r) => r.citations.length > 0)).toBe(true);
+  });
+
+  it("share the ASR source, so the importer reuses it", () => {
+    const urls = (b: typeof uchicagoAsr) => Object.values(b.sources).map((src) => src.url);
+    expect(urls(uchicagoInstitutional).some((u) => urls(uchicagoAsr).includes(u))).toBe(true);
+  });
+});
+
+describe("UChicago AEPi case bundle", () => {
+  const c = uchicagoAepi.cases![0];
+
+  it("validates, and every event is cited", () => {
+    expect(validateBundle(uchicagoAepi)).toEqual([]);
+    for (const e of c.events) expect(e.citations.length, e.ref).toBeGreaterThan(0);
+  });
+
+  it("leaves out the suspect description, the woman's age, and the address", () => {
+    const text = [c.title, c.summary, ...c.events.map((e) => e.description), ...c.events.flatMap((e) => e.citations.map((x) => x.excerpt ?? ""))].join(" ");
+    for (const detail of ["South Asian", "complexion", "5’ 7", "21-year-old", "Woman, 21", "5625", "5600"]) expect(text).not.toContain(detail);
+  });
+
+  it("creates the college as a draft and imports the case as pending review", async () => {
+    const { log } = await importResearchBundle(db, uchicagoAepi, actor);
+    expect(log).toContain("College University of Chicago: created as a draft.");
+    expect(log).toContain('Case "uchicago-2026-aepi": created with 3 events.');
+    expect(await getCase({ db, hideDemo: true }, "uchicago-2026-aepi")).toBeNull();
+    const preview = (await getCase({ db, hideDemo: true, preview: true }, "uchicago-2026-aepi"))!;
+    expect(preview.colleges.map((x) => x.slug)).toEqual(["university-of-chicago"]);
+    expect(preview.events.map((e) => e.eventType)).toEqual(["alleged_incident", "university_report", "police_report"]);
   });
 });

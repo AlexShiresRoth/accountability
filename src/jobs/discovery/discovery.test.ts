@@ -7,6 +7,7 @@ import { createTestDb } from "@/test/db";
 import { fixtures } from "@/test/fixtures";
 import { decodeEntities, parseFeed } from "./feed-parser";
 import { buildGdeltQuery, parseGdeltResponse } from "./gdelt";
+import { gdeltQueries, headlinePattern } from "./sources";
 import { searchTermGroups } from "./terms";
 import { courtListenerUrl, isCourtListenerUrl, parseCourtListener } from "./courtlistener";
 import { googleNewsUrl, headlineKey, isGoogleNewsUrl, parseGoogleNews, stripPublisherSuffix } from "./google-news";
@@ -407,6 +408,24 @@ describe("headline requirement", () => {
       "Columbia students protest handling of harassment complaints",
       "Cornell expels students after sexual misconduct finding",
     ]);
+  });
+});
+
+describe("headline names", () => {
+  const uchicago = gdeltQueries.find((q) => q.collegeSlug === "university-of-chicago")!;
+
+  it("match any of an institution's headline names", () => {
+    const re = headlinePattern(uchicago);
+    expect(re.test("Woman sexually assaulted at frat house near the University of Chicago")).toBe(true);
+    expect(re.test("UChicago news: Police investigating alleged sexual assault")).toBe(true);
+    expect(re.test("Domestic violence calls rise, Crime Lab finds")).toBe(false);
+    expect(re.test("Chicago police report rise in domestic violence")).toBe(false);
+  });
+
+  it("match only the short name when no others are given", () => {
+    const re = headlinePattern({ shortName: "UCLA" });
+    expect(re.test("UCLA settles harassment suit")).toBe(true);
+    expect(re.test("UCLAN students rally")).toBe(false);
   });
 });
 
