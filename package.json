@@ -18,7 +18,8 @@
     "db:local:up": "docker compose up -d --wait db",
     "db:local:down": "docker compose down",
     "discover": "tsx --env-file=.env.local scripts/discover.ts",
-    "import-research": "tsx --conditions=react-server --env-file=.env.local scripts/import-research.ts"
+    "import-research": "tsx --conditions=react-server --env-file=.env.local scripts/import-research.ts",
+    "triage": "tsx --conditions=react-server --env-file=.env.local scripts/triage.ts"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

@@ -122,3 +122,7 @@ export type SourceAccess = (typeof sourceAccessLevels)[number];
 
 export const candidateStatuses = ["new", "accepted", "dismissed"] as const;
 export type CandidateStatus = (typeof candidateStatuses)[number];
+
+/** AI triage of an inbox item. Only "irrelevant" leads to automatic dismissal; nothing is ever accepted automatically. */
+export const triageVerdicts = ["relevant", "irrelevant", "unsure"] as const;
+export type TriageVerdict = (typeof triageVerdicts)[number];

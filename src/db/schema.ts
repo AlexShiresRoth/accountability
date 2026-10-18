@@ -37,6 +37,7 @@ export const confidentialityLevel = pgEnum("confidentiality_level", e.confidenti
 export const coverageScope = pgEnum("coverage_scope", e.coverageScopes);
 export const coverageTopic = pgEnum("coverage_topic", e.coverageTopics);
 export const candidateStatus = pgEnum("candidate_status", e.candidateStatuses);
+export const triageVerdict = pgEnum("triage_verdict", e.triageVerdicts);
 export const sourceAccess = pgEnum("source_access", e.sourceAccessLevels);
 
 // ---------------------------------------------------------------------------
@@ -477,6 +478,8 @@ export const candidateItems = pgTable(
     id: id(),
     ingestionRunId: uuid("ingestion_run_id").references(() => ingestionRuns.id, { onDelete: "set null" }),
     url: text("url").notNull().unique(),
+    /** The publisher's URL behind a Google News link, when it could be resolved. `url` keeps the link as found. */
+    resolvedUrl: text("resolved_url"),
     title: text("title"),
     publisher: text("publisher"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
@@ -489,6 +492,11 @@ export const candidateItems = pgTable(
     acceptedSourceId: uuid("accepted_source_id").references(() => sources.id, { onDelete: "set null" }),
     reviewedBy: text("reviewed_by"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** AI triage (src/lib/admin/triage.ts): an aid to researchers, never a verification. */
+    aiVerdict: triageVerdict("ai_verdict"),
+    aiReason: text("ai_reason"),
+    aiModel: text("ai_model"),
+    aiTriagedAt: timestamp("ai_triaged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("candidate_item_status_idx").on(t.status)],

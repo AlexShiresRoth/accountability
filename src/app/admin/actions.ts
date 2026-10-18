@@ -13,7 +13,8 @@ import { USER_AGENT } from "@/jobs/discovery/run";
 import * as s from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { runManualDiscovery } from "@/lib/admin/discovery";
-import { acceptCandidate, dismissCandidate } from "@/lib/admin/inbox";
+import { acceptCandidate, dismissCandidate, restoreCandidate } from "@/lib/admin/inbox";
+import { triageInbox } from "@/lib/admin/triage";
 import {
   addCitation,
   createCollege,
@@ -277,7 +278,7 @@ export async function draftSummaryAction(
 
   let text = (pastedText ?? "").trim();
   if (!text) {
-    const url = articleUrl?.trim() || candidate.url;
+    const url = articleUrl?.trim() || candidate.resolvedUrl || candidate.url;
     if (isGoogleNewsUrl(url)) return { ok: false, reason: "Paste the publisher's article URL above first (Google News links can't be read)." };
     if (!isFetchableArticleUrl(url)) return { ok: false, reason: "That link can't be fetched. Use the publisher's article URL." };
     try {
@@ -301,6 +302,29 @@ export async function dismissCandidateAction(id: string, _prev: FormState): Prom
   if (!result.ok) return { problems: result.problems };
   revalidatePath("/admin/inbox");
   return { ok: true, message: "Dismissed." };
+}
+
+export async function restoreCandidateAction(id: string, _prev: FormState): Promise<FormState> {
+  await requireResearcher();
+  const result = await restoreCandidate(db, id);
+  if (!result.ok) return { problems: result.problems };
+  revalidatePath("/admin/inbox");
+  revalidatePath("/admin");
+  return { ok: true, message: "Restored to the inbox." };
+}
+
+/** AI triage of new inbox items, time-boxed to fit the dashboard's function limit. Never accepts anything. */
+export async function triageInboxAction(_prev: FormState): Promise<FormState> {
+  await requireResearcher();
+  if (!process.env.OPENAI_API_KEY) return { problems: ["AI triage isn't set up: add OPENAI_API_KEY to the environment."] };
+  const report = await triageInbox(db, { limit: 60, budgetMs: 240_000 });
+  revalidatePath("/admin/inbox");
+  revalidatePath("/admin");
+  if (!report.items.length) return { ok: true, message: "Nothing to triage: every new item has been looked at." };
+  const kept = report.items.length - report.dismissed - report.failed;
+  const more = report.remaining ? " More items are waiting; run it again." : "";
+  const failed = report.failed ? ` ${report.failed} couldn’t be classified and stay in the inbox.` : "";
+  return { ok: true, message: `Triaged ${report.items.length}: ${report.dismissed} dismissed as irrelevant, ${kept} kept for review.${failed}${more}` };
 }
 
 export async function acceptCandidateAction(id: string, _prev: FormState, form: FormData): Promise<FormState> {

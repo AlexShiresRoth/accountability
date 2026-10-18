@@ -45,6 +45,7 @@ export async function listCandidates(
     .select({
       id: s.candidateItems.id,
       url: s.candidateItems.url,
+      resolvedUrl: s.candidateItems.resolvedUrl,
       title: s.candidateItems.title,
       publisher: s.candidateItems.publisher,
       publishedAt: s.candidateItems.publishedAt,
@@ -58,6 +59,8 @@ export async function listCandidates(
       caseId: s.candidateItems.caseId,
       caseTitle: s.cases.title,
       acceptedSourceId: s.candidateItems.acceptedSourceId,
+      aiVerdict: s.candidateItems.aiVerdict,
+      aiReason: s.candidateItems.aiReason,
     })
     .from(s.candidateItems)
     .leftJoin(s.colleges, eq(s.candidateItems.collegeId, s.colleges.id))
@@ -102,6 +105,16 @@ export async function dismissCandidate(db: Database, id: string, actor: string):
   return updated.length ? { ok: true, value: undefined } : { ok: false, problems: ["This candidate has already been triaged."] };
 }
 
+/** Returns a dismissed candidate to the inbox (e.g. one AI triage set aside wrongly). */
+export async function restoreCandidate(db: Database, id: string): Promise<MutationResult> {
+  const updated = await db
+    .update(s.candidateItems)
+    .set({ status: "new", reviewedBy: null, reviewedAt: null })
+    .where(and(eq(s.candidateItems.id, id), eq(s.candidateItems.status, "dismissed")))
+    .returning({ id: s.candidateItems.id });
+  return updated.length ? { ok: true, value: undefined } : { ok: false, problems: ["Only dismissed items can be restored."] };
+}
+
 /** Creates a draft source (and, unless source-only, a draft coverage entry) from a candidate, then marks it accepted. */
 export async function acceptCandidate(
   db: Database,
@@ -116,7 +129,7 @@ export async function acceptCandidate(
     if (candidate.status !== "new") return { ok: false as const, problems: ["This candidate has already been triaged."] };
 
     // Provenance: a source must point at the publisher, never at an aggregator link.
-    const url = input.articleUrl ?? candidate.url;
+    const url = input.articleUrl ?? candidate.resolvedUrl ?? candidate.url;
     if (isGoogleNewsUrl(url)) {
       return {
         ok: false as const,

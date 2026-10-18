@@ -43,6 +43,13 @@
       "when": 1791472388381,
       "tag": "0005_add_source_access",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792336484070,
+      "tag": "0006_add_inbox_triage",
+      "breakpoints": true
     }
   ]
 }

@@ -14,9 +14,17 @@ import { sourceTypes } from "@/lib/source-types";
 import { isGoogleNewsUrl } from "@/jobs/discovery/google-news";
 import { isCourtListenerUrl } from "@/jobs/discovery/courtlistener";
 import { feeds, gdeltQueries, headlinePattern } from "@/jobs/discovery/sources";
-import { acceptCandidateAction, dismissCandidateAction } from "../actions";
+import { isTriageActor } from "@/lib/admin/triage";
+import type { TriageVerdict } from "@/lib/enums";
+import { acceptCandidateAction, dismissCandidateAction, restoreCandidateAction } from "../actions";
 
 export const metadata = { title: "Inbox" };
+
+const verdictStyles: Record<TriageVerdict, { label: string; className: string }> = {
+  relevant: { label: "AI: relevant", className: "border-ink text-ink" },
+  unsure: { label: "AI: unsure", className: "border-rule-strong text-ink-muted" },
+  irrelevant: { label: "AI: irrelevant", className: "border-caution-rule bg-caution text-caution-ink" },
+};
 
 const tabLabels: Record<CandidateStatus, string> = { new: "New", accepted: "Accepted", dismissed: "Dismissed" };
 
@@ -117,11 +125,19 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
               {c.suggestedTopic && ` · suggested: ${coverageTopicLabels[c.suggestedTopic]}`}
             </p>
             <p className="mt-1 font-medium">
-              <a href={c.url} target="_blank" rel="noopener noreferrer">
+              <a href={c.resolvedUrl ?? c.url} target="_blank" rel="noopener noreferrer">
                 {c.title ?? c.url}
               </a>
-              {isGoogleNewsUrl(c.url) && <span className="ml-2 text-xs font-normal text-ink-muted">(opens via Google News)</span>}
+              {isGoogleNewsUrl(c.url) && !c.resolvedUrl && <span className="ml-2 text-xs font-normal text-ink-muted">(opens via Google News)</span>}
             </p>
+            {c.aiVerdict && (
+              <p className="mt-1 text-sm">
+                <span className={`mr-2 inline-block border px-1.5 py-px text-xs font-semibold whitespace-nowrap ${verdictStyles[c.aiVerdict].className}`}>
+                  {verdictStyles[c.aiVerdict].label}
+                </span>
+                <span className="text-ink-muted">{c.aiReason}</span>
+              </p>
+            )}
             {status === "new" && headlineMissesCollege(c.title, c.collegeSlug, c.publisher) && (
               <p className="mt-1 text-xs font-medium text-caution-ink">
                 Headline doesn&rsquo;t mention {headlineMissesCollege(c.title, c.collegeSlug, c.publisher)}. The article may only mention it in passing.
@@ -143,6 +159,14 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                   </>
                 )}
               </p>
+            )}
+            {status === "dismissed" && (
+              <ActionForm
+                action={restoreCandidateAction.bind(null, c.id)}
+                submitLabel={isTriageActor(c.reviewedBy) ? "Restore: not irrelevant" : "Restore to inbox"}
+                variant="secondary"
+                className="mt-3 flex items-center gap-2"
+              />
             )}
 
             {status === "new" && (
@@ -219,7 +243,12 @@ export default async function InboxPage({ searchParams }: PageProps<"/admin/inbo
                               label="Publisher's article URL"
                               type="url"
                               required
-                              hint="Found via Google News, whose links don't point at the publisher. Open the article above, then paste the address from your browser."
+                              defaultValue={c.resolvedUrl}
+                              hint={
+                                c.resolvedUrl
+                                  ? "Resolved automatically from the Google News link. Open it and check it is the right article before accepting."
+                                  : "Found via Google News, whose links don't point at the publisher. Open the article above, then paste the address from your browser."
+                              }
                             />
                           </div>
                         )}

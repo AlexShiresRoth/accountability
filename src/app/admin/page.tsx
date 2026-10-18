@@ -13,7 +13,7 @@ import { formatDate } from "@/lib/dates";
 import { requireResearcherPage } from "@/lib/admin/session";
 import { reviewTables, type ReviewTableKey } from "@/lib/admin/workflow";
 import { verificationStatuses } from "@/lib/enums";
-import { runDiscoveryAction } from "./actions";
+import { runDiscoveryAction, triageInboxAction } from "./actions";
 
 export const metadata = { title: "Dashboard" };
 
@@ -122,6 +122,19 @@ export default async function AdminDashboard() {
             />
           </div>
         </ActionForm>
+      </section>
+
+      <section aria-labelledby="triage-inbox">
+        <h2 id="triage-inbox" className="text-xl">
+          Triage the inbox with AI
+        </h2>
+        <p className="mt-1 max-w-[70ch] text-sm text-ink-muted">
+          Resolves Google News links to the publisher&rsquo;s article, reads it where possible, and marks each new item
+          relevant, unsure or irrelevant with a reason. Irrelevant items are dismissed and can be restored from the
+          Dismissed tab; court dockets and possible case updates always stay. Nothing is accepted or verified. Runs for
+          up to four minutes at a time.
+        </p>
+        <ActionForm action={triageInboxAction} submitLabel="Triage new items" className="mt-3" />
       </section>
 
       <DiscoveryRuns data={runs} />

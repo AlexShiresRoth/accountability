@@ -15,32 +15,6 @@ export type RoadmapItem = {
 
 export const roadmap: RoadmapItem[] = [
   {
-    id: "harvard-columbia",
-    title: "Harvard University and Columbia University profiles",
-    summary:
-      "Statistics from each university's Annual Security Reports, along with its policies and reporting and support resources, have been transcribed. Every figure is being checked against the original report before the profiles are published.",
-    status: "in_progress",
-    updated: "2026-10",
-  },
-  {
-    id: "large-public-universities",
-    title: "Five more university profiles",
-    summary:
-      "The University of Utah, the University of Colorado Boulder, The Ohio State University, Penn State and UCLA: statistics from each university's Annual Security Reports, with its policies and reporting and support resources, each checked against the original before publication.",
-    status: "in_progress",
-    updated: "2026-10",
-    link: { href: "/methodology#coverage", label: "How universities are chosen" },
-  },
-  {
-    id: "university-of-chicago",
-    title: "University of Chicago profile",
-    summary:
-      "Statistics from the University of Chicago's Annual Security Reports, with its policies and reporting and support resources, each checked against the original before publication.",
-    status: "in_progress",
-    updated: "2026-10",
-    link: { href: "/methodology#coverage", label: "How universities are chosen" },
-  },
-  {
     id: "lessons-review",
     title: "Editorial review of the prevention lessons",
     summary:
@@ -80,6 +54,33 @@ export const roadmap: RoadmapItem[] = [
       "Adding the U.S. Department of Education's Campus Safety and Security data, which universities submit each year, to show longer trends alongside each university's own reports.",
     status: "planned",
     updated: "2026-10",
+  },
+  {
+    id: "university-of-chicago",
+    title: "University of Chicago profile",
+    summary:
+      "Reported incidents from the University of Chicago's 2025–2026 and 2026–2027 Annual Security Reports, its institutional response, and reporting and support resources, each checked against the original and linked to its source.",
+    status: "done",
+    updated: "2026-10",
+    link: { href: "/college/university-of-chicago", label: "University of Chicago" },
+  },
+  {
+    id: "large-public-universities",
+    title: "Five more university profiles",
+    summary:
+      "The University of Utah, the University of Colorado Boulder, The Ohio State University, Penn State and UCLA: statistics from each university's Annual Security Reports, with its policies and reporting and support resources, each checked against the original and linked to its source.",
+    status: "done",
+    updated: "2026-10",
+    link: { href: "/#institutions", label: "All universities" },
+  },
+  {
+    id: "harvard-columbia",
+    title: "Harvard University and Columbia University profiles",
+    summary:
+      "Statistics from each university's Annual Security Reports, along with its policies and reporting and support resources, each checked against the original report and linked to its source.",
+    status: "done",
+    updated: "2026-10",
+    link: { href: "/#institutions", label: "All universities" },
   },
   {
     id: "cornell-profile",

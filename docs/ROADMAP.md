@@ -98,11 +98,11 @@ page's work-in-progress note links to it and lists the universities still in pre
 
 - [x] Cornell Annual Security Reports 2025 and 2026 (Ithaca campus) transcribed in `research/cornell-university.ts`
       and imported as `pending_review` (`pnpm import-research cornell-university`).
-- [ ] Human verification of the Cornell transcription against the PDFs (page 6 of each report), then verify the
+- [x] Human verification of the Cornell transcription against the PDFs (page 6 of each report), then verify the
       college record to publish the profile.
 - [x] Cornell institutional record (7 responses, Policy 6.4, 11 resources) transcribed from the 2026 ASR in
       `research/cornell-institutional.ts` and imported as `pending_review` (`pnpm import-research cornell-institutional`).
-- [ ] Verify the Cornell institutional records against ASR pp. 6, 20–23, 33.
+- [x] Verify the Cornell institutional records against ASR pp. 6, 20–23, 33.
 - [ ] Cornell follow-up research: Policy 6.4 title/effective date and current procedures, and the Office of Civil
       Rights statistical summaries (officeofcivilrights.cornell.edu blocks automated retrieval; needs a browser and an
       archived copy).
@@ -117,7 +117,7 @@ page's work-in-progress note links to it and lists the universities still in pre
       `pending_review`.
 - [x] Harvard and Columbia bundles imported into production as `pending_review` (2026-10-05) with
       `DB_TARGET=production pnpm import-research <bundle> --production`.
-- [ ] Verify the Harvard and Columbia transcriptions and institutional records in the production admin, then the college records.
+- [x] Verify the Harvard and Columbia transcriptions and institutional records in the production admin, then the college records.
 - [x] Large public universities (selected by 2024 rapes reported across Clery locations in the federal Campus Safety
       and Security data, Crime2025EXCEL.zip; see Methodology → "Which universities we cover"): Utah, CU Boulder, Ohio
       State, Penn State, UCLA. 2026 and 2025 ASRs (main campus) and institutional records in `research/`, imported to
@@ -126,14 +126,15 @@ page's work-in-progress note links to it and lists the universities still in pre
       domestic violence, where the 2026 report's row appears shifted between columns). Differences are listed in each
       file's header; figures are as printed.
 - [x] Imported the five into production as `pending_review` (2026-10-05).
-- [ ] Verify the five in the production admin, then their college records.
+- [x] Verify the five in the production admin, then their college records.
 - [x] University of Chicago, added after an alleged sexual assault at the AEPi fraternity house on 2026-10-11:
       2026–2027 and 2025–2026 ASRs (Hyde Park table; all 84 overlapping cells match the federal data) in
       `research/university-of-chicago.ts`; institutional record (7 responses, 4 policies, 17 resources, 1 timeline
       entry) in `research/university-of-chicago-institutional.ts`; case draft in `research/uchicago-aepi.ts`.
       Discovery: Chicago Maroon feed; search results must name the university in the headline (Crime Lab noise).
-- [ ] Import the three UChicago bundles (dev, then production) and verify. Decide whether the AEPi case meets the
-      bar for a case record yet (no proceeding so far); set its monitoring terms ("Alpha Epsilon Pi", "AEPi").
+- [x] Import the UChicago statistics and institutional bundles (dev, then production) and verify the profile.
+- [ ] Decide whether the AEPi case meets the bar for a case record yet (no proceeding so far); set its monitoring
+      terms ("Alpha Epsilon Pi", "AEPi").
 - [ ] UChicago: settle the contact-detail conflicts listed in the institutional file's header; archive the 2026 ASR
       on the Wayback Machine (the Internet Archive was rate-limiting on 2026-10-12); locate the university's AEPi
       community alert and any CPD statement.
